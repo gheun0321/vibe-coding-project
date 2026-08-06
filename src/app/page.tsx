@@ -79,11 +79,25 @@ const HOME_GREETING =
 function speak(text: string): boolean {
   try {
     if (!("speechSynthesis" in window)) return false;
-    window.speechSynthesis.cancel();
+    const synth = window.speechSynthesis;
+    const hadQueued = synth.speaking || synth.pending;
+    if (hadQueued) synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "ko-KR";
     utterance.rate = 0.95;
-    window.speechSynthesis.speak(utterance);
+    // cancel() 바로 뒤에 speak()를 부르면 일부 브라우저(크롬)에서 새 음성이 재생되지 않는 문제가 있어,
+    // 취소한 게 있을 때만 살짝 지연을 두고 말해요.
+    if (hadQueued) {
+      setTimeout(() => {
+        try {
+          synth.speak(utterance);
+        } catch {
+          // ignore
+        }
+      }, 80);
+    } else {
+      synth.speak(utterance);
+    }
     return true;
   } catch {
     return false;
@@ -573,6 +587,13 @@ export default function Home() {
     setOtherInput("");
   }
 
+  function finishKeypadInput(text: string) {
+    const value = text.trim();
+    if (value) setCustom((prev) => [...prev, value]);
+    setOtherInput("");
+    setKeypadOpen(false);
+  }
+
   function removeCustomItem(index: number) {
     setCustom((prev) => prev.filter((_, i) => i !== index));
   }
@@ -631,11 +652,7 @@ export default function Home() {
   const openItemSubtotal = openItemLines.reduce((sum, line) => sum + line.price * line.qty, 0);
 
   return (
-    <div
-      className={`mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 sm:p-8 ${
-        screen === "items" ? "h-dvh overflow-hidden" : "min-h-screen"
-      }`}
-    >
+    <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-5 p-4 sm:p-8">
       <div className="flex shrink-0 justify-center">
         <button
           onClick={toggleReadAloud}
@@ -702,14 +719,12 @@ export default function Home() {
       )}
 
       {screen === "items" && (
-        <section className="flex min-h-0 flex-1 flex-col gap-5">
-          <p className="shrink-0 text-center text-[clamp(1.5rem,4vw,2.4rem)] font-extrabold text-balance">
+        <section className="flex flex-1 flex-col gap-5">
+          <p className="text-center text-[clamp(1.5rem,4vw,2.4rem)] font-extrabold text-balance">
             필요한 물건을 눌러 담아주세요
           </p>
-          <div className="shrink-0">
-            <VoiceBanner active={voiceActive} status={voiceStatus} onReplay={() => setReplayToken((n) => n + 1)} />
-          </div>
-          <div className="grid shrink-0 grid-cols-[repeat(auto-fit,minmax(140px,1fr))] content-start gap-4">
+          <VoiceBanner active={voiceActive} status={voiceStatus} onReplay={() => setReplayToken((n) => n + 1)} />
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] content-start gap-4">
             {PRESET_ITEMS.map((item) => {
               const lines = itemLines[item.id] ?? [];
               const configured = lines.length > 0;
@@ -753,9 +768,9 @@ export default function Home() {
               </span>
             </button>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-2.5 border-t-[3px] border-frame pt-3.5">
+          <div className="flex flex-col gap-2.5 border-t-[3px] border-frame pt-3.5">
             {totalLineCount > 0 ? (
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border-2 border-frame bg-surface p-3">
+              <div className="rounded-2xl border-2 border-frame bg-surface p-3">
                 <ul className="flex flex-col gap-2">
                   {PRESET_ITEMS.flatMap((it) =>
                     (itemLines[it.id] ?? []).map((line) => (
@@ -790,7 +805,7 @@ export default function Home() {
             <button
               disabled={totalLineCount === 0}
               onClick={() => setScreen("delivery")}
-              className={`${nextBtn} shrink-0 self-end`}
+              className={`${nextBtn} self-end`}
             >
               다음
             </button>
@@ -996,7 +1011,7 @@ export default function Home() {
               </button>
             </div>
             {keypadOpen && (
-              <HangulKeypad value={otherInput} onChange={setOtherInput} onClose={() => setKeypadOpen(false)} />
+              <HangulKeypad value={otherInput} onChange={setOtherInput} onDone={finishKeypadInput} />
             )}
             <div className="flex flex-wrap gap-2">
               {custom.map((text, i) => (

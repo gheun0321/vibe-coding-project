@@ -40,11 +40,11 @@ const keyBtn =
 export function HangulKeypad({
   value,
   onChange,
-  onClose,
+  onDone,
 }: {
   value: string;
   onChange: (next: string) => void;
-  onClose: () => void;
+  onDone: (finalValue: string) => void;
 }) {
   const [committed, setCommitted] = useState(value);
   const [comp, setComp] = useState<Comp>(EMPTY_COMP);
@@ -121,8 +121,7 @@ export function HangulKeypad({
   }
 
   function finish() {
-    onChange(committed + renderComp(comp));
-    onClose();
+    onDone(committed + renderComp(comp));
   }
 
   return (
