@@ -327,10 +327,8 @@ export default function Home() {
 
   function deliveryNoticePhrase(): string {
     if (!delivery) return "";
-    if (delivery.type === "today") return "오늘 중";
-    if (delivery.type === "tomorrow") return "내일 중";
     if (delivery.type === "custom" && customDate) return `${formatCustomDateLabel(customDate)}에`;
-    return "";
+    return delivery.label;
   }
 
   // 첫 화면: 매번 화면에 들어올 때 인사 + 화면 내용을 읽어줘요 (안내문구는 제외).
