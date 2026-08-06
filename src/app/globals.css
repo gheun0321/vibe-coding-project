@@ -57,10 +57,19 @@ body {
   100% { background-color: var(--surface); color: var(--foreground); transform: scale(1); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .flash-row { animation: none !important; }
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-success) 55%, transparent); }
+  50% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--accent-success) 0%, transparent); }
+}
+
+@keyframes blink-close {
+  0%, 100% { background-color: var(--surface); border-color: var(--frame); color: var(--foreground); }
+  50% { background-color: var(--accent-button); border-color: var(--accent-button-deep); color: #fff; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .flash-row { animation: none !important; }
+  .pulse-glow-btn { animation: none !important; }
+  .blink-close-btn { animation: none !important; }
   .voice-wave-bar { animation: none !important; height: 16px !important; }
 }

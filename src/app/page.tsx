@@ -274,6 +274,7 @@ export default function Home() {
   const [dateVoiceStatus, setDateVoiceStatus] = useState("");
   const [readAloud, setReadAloud] = useState(true);
   const [keypadOpen, setKeypadOpen] = useState(false);
+  const [closeHintBlink, setCloseHintBlink] = useState(false);
 
   const activeCancelRef = useRef<() => void>(() => {});
 
@@ -378,6 +379,19 @@ export default function Home() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickingCustomDate, mode, screen]);
+
+  // 물품 담기 팝업이 떠 있는 동안: 10초 후부터 닫기 버튼이 깜빡이고, 30초마다 닫기 안내 음성이 나와요.
+  useEffect(() => {
+    if (!openItemId) return;
+    const blinkTimer = setTimeout(() => setCloseHintBlink(true), 10000);
+    const reminder = readAloud
+      ? setInterval(() => speak("선택이 끝나셨다면 닫기 버튼을 눌러주세요."), 30000)
+      : null;
+    return () => {
+      clearTimeout(blinkTimer);
+      if (reminder) clearInterval(reminder);
+    };
+  }, [openItemId, readAloud]);
 
   function closeOtherModal() {
     window.speechSynthesis?.cancel();
@@ -507,7 +521,9 @@ export default function Home() {
   function goBack() {
     window.speechSynthesis?.cancel();
     const idx = STEP_ORDER.indexOf(screen);
-    setScreen(STEP_ORDER[Math.max(0, idx - 1)]);
+    const target = STEP_ORDER[Math.max(0, idx - 1)];
+    if (target === "home") setReadAloud(true);
+    setScreen(target);
   }
 
   function openItemPopup(id: string) {
@@ -515,7 +531,14 @@ export default function Home() {
     setDraftVariant(options[0] ?? "");
     setDraftQty(1);
     setJustAddedVariant(null);
+    setCloseHintBlink(false);
     setOpenItemId(id);
+  }
+
+  function closeItemPopup() {
+    window.speechSynthesis?.cancel();
+    setOpenItemId(null);
+    setCloseHintBlink(false);
   }
 
   function addLineItem() {
@@ -582,6 +605,7 @@ export default function Home() {
   function restart() {
     window.speechSynthesis?.cancel();
     setScreen("home");
+    setReadAloud(true);
     setMode(null);
     setItemLines({});
     setCustom([]);
@@ -1037,7 +1061,9 @@ export default function Home() {
             <button
               onClick={addLineItem}
               disabled={!draftVariant}
-              className="rounded-2xl bg-accent-success px-6 py-3 text-[clamp(1.05rem,2.2vw,1.25rem)] font-extrabold text-white disabled:bg-frame disabled:text-text-soft"
+              className={`pulse-glow-btn rounded-2xl bg-accent-success px-6 py-3 text-[clamp(1.05rem,2.2vw,1.25rem)] font-extrabold text-white disabled:bg-frame disabled:text-text-soft ${
+                draftVariant ? "animate-[pulse-glow_1.6s_ease-in-out_infinite]" : ""
+              }`}
             >
               {draftVariant || "물건"} 담기
             </button>
@@ -1075,8 +1101,10 @@ export default function Home() {
             )}
 
             <button
-              onClick={() => setOpenItemId(null)}
-              className="self-end rounded-2xl border-[3px] border-frame px-6 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-bold"
+              onClick={closeItemPopup}
+              className={`blink-close-btn self-end rounded-2xl border-[3px] border-frame px-6 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-bold ${
+                closeHintBlink ? "animate-[blink-close_1s_ease-in-out_infinite]" : ""
+              }`}
             >
               닫기
             </button>
