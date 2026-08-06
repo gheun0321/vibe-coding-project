@@ -23,6 +23,7 @@ import {
   IconSpeakerOff,
 } from "./icons";
 import { HangulKeypad } from "./hangul-keypad";
+import { BigCalendar } from "./big-calendar";
 
 type ScreenId = "home" | "items" | "delivery" | "address" | "payment" | "confirm";
 type Mode = "button" | "voice" | null;
@@ -216,15 +217,19 @@ function parseSpokenDate(text: string): { value: string; display: string } | nul
 
 const cardBase =
   "relative flex flex-col items-center justify-center gap-2 rounded-[26px] border-[5px] border-frame bg-surface p-4 min-h-[150px] cursor-pointer text-center outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
-const choiceCard =
-  "flex flex-1 min-w-[150px] flex-col items-center justify-center gap-3 rounded-[24px] border-4 border-frame bg-surface p-6 cursor-pointer text-center outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
+const choiceCardBase =
+  "flex flex-1 min-w-[150px] flex-col items-center justify-center gap-3 rounded-[24px] border-4 p-6 cursor-pointer text-center outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
+const choiceCardOff = "border-frame bg-surface";
+const choiceCardOn = "border-accent-success bg-accent-success text-white";
+const choiceCard = `${choiceCardBase} ${choiceCardOff}`;
 const nextBtn =
   "rounded-[20px] bg-accent-success px-8 py-3.5 text-[clamp(1.05rem,2.2vw,1.3rem)] font-extrabold text-white disabled:bg-frame disabled:text-text-soft disabled:cursor-not-allowed";
 const backBtn =
   "flex items-center gap-2 rounded-[18px] border-[3px] border-frame bg-surface px-4 py-2.5 text-[clamp(1.05rem,2vw,1.3rem)] font-bold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
-const variantChip =
-  "rounded-2xl border-[3px] border-frame bg-background px-4 py-2.5 text-[clamp(1rem,2vw,1.15rem)] font-bold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
-const variantChipSelected = "border-accent-success bg-accent-success text-white";
+const variantChipBase =
+  "rounded-2xl border-[3px] px-4 py-2.5 text-[clamp(1rem,2vw,1.15rem)] font-bold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
+const variantChipOff = "border-frame bg-background";
+const variantChipOn = "border-accent-success bg-accent-success text-white";
 const stepperBtn =
   "flex h-12 w-12 items-center justify-center rounded-full border-[3px] border-frame text-2xl font-extrabold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
 
@@ -288,6 +293,7 @@ export default function Home() {
   const [dateVoiceStatus, setDateVoiceStatus] = useState("");
   const [readAloud, setReadAloud] = useState(true);
   const [keypadOpen, setKeypadOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [closeHintBlink, setCloseHintBlink] = useState(false);
 
   const activeCancelRef = useRef<() => void>(() => {});
@@ -394,9 +400,10 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickingCustomDate, mode, screen]);
 
-  // 물품 담기 팝업이 떠 있는 동안: 10초 후부터 닫기 버튼이 깜빡이고, 30초마다 닫기 안내 음성이 나와요.
+  // 물품 담기 팝업이 열리면 바로 안내하고, 10초 후부터 닫기 버튼이 깜빡이고, 30초마다 닫기 안내 음성이 나와요.
   useEffect(() => {
     if (!openItemId) return;
+    if (readAloud) speak("제품을 선택하고 담기 버튼을 눌러주세요.");
     const blinkTimer = setTimeout(() => setCloseHintBlink(true), 10000);
     const reminder = readAloud
       ? setInterval(() => speak("선택이 끝나셨다면 닫기 버튼을 눌러주세요."), 30000)
@@ -595,6 +602,16 @@ export default function Home() {
     }));
   }
 
+  function adjustLineQty(categoryId: string, variant: string, delta: number) {
+    setItemLines((prev) => {
+      const lines = prev[categoryId] ?? [];
+      const next = lines
+        .map((line) => (line.variant === variant ? { ...line, qty: line.qty + delta } : line))
+        .filter((line) => line.qty > 0);
+      return { ...prev, [categoryId]: next };
+    });
+  }
+
   function addCustomItem() {
     const value = otherInput.trim();
     if (!value) return;
@@ -615,6 +632,7 @@ export default function Home() {
 
   function pickDate(type: "today" | "tomorrow") {
     setPickingCustomDate(false);
+    setCalendarOpen(false);
     setDelivery({ type, label: type === "today" ? "오늘 중" : "내일 중" });
   }
 
@@ -648,6 +666,7 @@ export default function Home() {
     setDelivery(null);
     setCustomDate("");
     setPickingCustomDate(false);
+    setCalendarOpen(false);
     setAddress("");
     setPayment(null);
   }
@@ -845,7 +864,7 @@ export default function Home() {
           <div className="flex flex-wrap justify-center gap-4">
             <button
               onClick={() => pickDate("today")}
-              className={`${choiceCard} ${delivery?.type === "today" ? "border-accent-success bg-accent-success text-white" : ""}`}
+              className={`${choiceCardBase} ${delivery?.type === "today" ? choiceCardOn : choiceCardOff}`}
             >
               <IconCalendarToday
                 className={`h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] ${delivery?.type === "today" ? "text-white" : "text-accent-success"}`}
@@ -854,7 +873,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => pickDate("tomorrow")}
-              className={`${choiceCard} ${delivery?.type === "tomorrow" ? "border-accent-success bg-accent-success text-white" : ""}`}
+              className={`${choiceCardBase} ${delivery?.type === "tomorrow" ? choiceCardOn : choiceCardOff}`}
             >
               <IconCalendarTomorrow
                 className={`h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] ${delivery?.type === "tomorrow" ? "text-white" : "text-accent-success"}`}
@@ -863,7 +882,7 @@ export default function Home() {
             </button>
             <button
               onClick={openCustomDatePicker}
-              className={`${choiceCard} ${pickingCustomDate || delivery?.type === "custom" ? "border-accent-success bg-accent-success text-white" : ""}`}
+              className={`${choiceCardBase} ${pickingCustomDate || delivery?.type === "custom" ? choiceCardOn : choiceCardOff}`}
             >
               <IconCalendarPick
                 className={`h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] ${pickingCustomDate || delivery?.type === "custom" ? "text-white" : "text-accent-success"}`}
@@ -874,13 +893,13 @@ export default function Home() {
           {pickingCustomDate ? (
             <div className="flex flex-col items-center gap-3">
               <div className="flex flex-wrap items-center justify-center gap-2.5">
-                <input
-                  type="date"
-                  autoFocus
-                  value={customDate}
-                  onChange={(e) => pickCustomDate(e.target.value)}
-                  className="date-input-big rounded-2xl border-[3px] border-frame bg-surface px-4 py-3.5 text-[clamp(1.15rem,2.4vw,1.4rem)] text-foreground"
-                />
+                <button
+                  onClick={() => setCalendarOpen(true)}
+                  className="flex items-center gap-3 rounded-2xl border-[3px] border-frame bg-surface px-5 py-3.5 text-[clamp(1.15rem,2.4vw,1.4rem)] font-extrabold text-foreground"
+                >
+                  <IconCalendarPick className="h-8 w-8 text-accent-success" />
+                  {customDate ? formatCustomDateLabel(customDate) : "연도-월-일 선택"}
+                </button>
                 <button
                   onClick={dateAskVoice}
                   className="flex items-center gap-2 rounded-2xl bg-accent-voice px-4 py-3 text-[clamp(1rem,2vw,1.15rem)] font-extrabold text-white"
@@ -890,6 +909,16 @@ export default function Home() {
                 </button>
               </div>
               <VoiceBanner active={dateVoiceStatus.length > 0} status={dateVoiceStatus} onReplay={dateAskVoice} />
+              {calendarOpen && (
+                <BigCalendar
+                  value={customDate}
+                  onSelect={(v) => {
+                    pickCustomDate(v);
+                    setCalendarOpen(false);
+                  }}
+                  onClose={() => setCalendarOpen(false)}
+                />
+              )}
             </div>
           ) : null}
           <p className="min-h-[1.4em] text-center text-[clamp(1rem,2.2vw,1.2rem)] font-bold text-accent-success">
@@ -1077,15 +1106,18 @@ export default function Home() {
       )}
 
       {openItemId && openItem && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/45 p-5">
-          <div className="flex w-full max-w-lg flex-col gap-5 rounded-[28px] border-[5px] border-frame bg-surface p-7">
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/45 p-5" onClick={closeItemPopup}>
+          <div
+            className="flex w-full max-w-lg flex-col gap-5 rounded-[28px] border-[5px] border-frame bg-surface p-7"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="text-[clamp(1.3rem,2.8vw,1.6rem)] font-extrabold">{openItem.label} 담기</h2>
             <div className="flex flex-wrap gap-2.5">
               {(ITEM_VARIANTS[openItemId] ?? []).map((v) => (
                 <button
                   key={v}
                   onClick={() => setDraftVariant(v)}
-                  className={`${variantChip} ${draftVariant === v ? variantChipSelected : ""}`}
+                  className={`${variantChipBase} ${draftVariant === v ? variantChipOn : variantChipOff}`}
                 >
                   {v}
                 </button>
@@ -1118,13 +1150,28 @@ export default function Home() {
                 {openItemLines.map((line) => (
                   <div
                     key={line.variant}
-                    className={`flash-row flex items-center justify-between rounded-xl border-2 border-frame bg-background px-3.5 py-2.5 ${
+                    className={`flash-row flex flex-wrap items-center justify-between gap-2.5 rounded-xl border-2 border-frame bg-background px-3.5 py-2.5 ${
                       justAddedVariant === line.variant ? "animate-[flash-pick_0.7s_ease-out]" : ""
                     }`}
                   >
-                    <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-bold">
-                      {line.variant} × {line.qty}개
-                    </span>
+                    <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-bold">{line.variant}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => adjustLineQty(openItemId, line.variant, -1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-[3.5ch] text-center text-[clamp(1rem,2.1vw,1.15rem)] font-extrabold">
+                        {line.qty}개
+                      </span>
+                      <button
+                        onClick={() => adjustLineQty(openItemId, line.variant, 1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
+                      >
+                        +
+                      </button>
+                    </div>
                     <span className="flex items-center gap-2.5">
                       <span className="text-[clamp(.95rem,2vw,1.05rem)] font-semibold text-text-soft">
                         {(line.price * line.qty).toLocaleString()}원
