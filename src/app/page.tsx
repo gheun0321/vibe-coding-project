@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   IconEye,
   IconMic,
@@ -93,7 +93,7 @@ function listenOnce(
   onResult: (transcript: string) => void,
   onUnavailable: () => void,
   options?: ListenOptions
-) {
+): () => void {
   type SpeechRecognitionResultLike = { 0: { transcript: string } };
   type SpeechRecognitionCtor = new () => {
     lang: string;
@@ -111,7 +111,7 @@ function listenOnce(
     (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
   if (!Recognition) {
     onUnavailable();
-    return;
+    return () => {};
   }
   try {
     const recognition = new Recognition();
@@ -122,15 +122,21 @@ function listenOnce(
 
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      try {
+        recognition.stop();
+      } catch {
+        // ignore: recognition may already be stopped
+      }
+    };
+
     if (options?.timeoutMs) {
       timer = setTimeout(() => {
         if (settled) return;
-        settled = true;
-        try {
-          recognition.stop();
-        } catch {
-          // ignore: recognition may already be stopped
-        }
+        cancel();
         onUnavailable();
       }, options.timeoutMs);
     }
@@ -148,10 +154,14 @@ function listenOnce(
       onUnavailable();
     };
     recognition.start();
+    return cancel;
   } catch {
     onUnavailable();
+    return () => {};
   }
 }
+
+const VOICE_RETRY_HINT = "잘 못 들었어요. 음성입력을 원하시면 버튼을 다시 눌러주세요.";
 
 function isYesAnswer(text: string): boolean {
   if (/아니|안\s?맞|틀리|다르/.test(text)) return false;
@@ -260,6 +270,19 @@ export default function Home() {
 
   const [dateVoiceStatus, setDateVoiceStatus] = useState("");
 
+  const activeCancelRef = useRef<() => void>(() => {});
+
+  function listen(onResult: (transcript: string) => void, onUnavailable: () => void, options?: ListenOptions) {
+    activeCancelRef.current();
+    activeCancelRef.current = listenOnce(onResult, onUnavailable, options);
+  }
+
+  // 화면이 바뀌면 이전 화면에서 대기 중이던 음성인식은 자동으로 멈춰요.
+  // (예: 배송일 화면에서 음성으로 날짜를 듣는 중에 배송지 화면으로 넘어가도, 뒤늦게 결과가 와서 끼어들지 않도록)
+  useEffect(() => {
+    return () => activeCancelRef.current();
+  }, [screen]);
+
   const voiceActive = mode === "voice" && screen !== "home";
 
   function deliveryNoticePhrase(): string {
@@ -311,7 +334,7 @@ export default function Home() {
       const ok = speak(prompt);
       setVoiceStatus(ok ? "안내 음성을 재생하고 있어요" : "이 화면에서는 음성 재생이 막혀 있어요 · 그림을 눌러 골라주세요");
       if (onResult) {
-        listenOnce(
+        listen(
           onResult,
           () => {
             setVoiceStatus("그림을 눌러 골라주세요 (음성 인식은 이 환경에서 막혀 있을 수 있어요)");
@@ -352,7 +375,7 @@ export default function Home() {
     setOtherStep("name");
     const ok = speak("추가하실 물건 이름을 말씀해주세요.");
     setOtherVoiceStatus(ok ? "물건 이름을 말씀해주세요" : "음성 재생이 막혀 있어요 · 직접 입력해주세요");
-    listenOnce(
+    listen(
       (t) => otherConfirmCandidate(t),
       () => setOtherVoiceStatus("음성 인식이 되지 않았어요 · 직접 입력하거나 다시 듣기를 눌러주세요"),
       { timeoutMs: 15000, continuous: true }
@@ -369,7 +392,7 @@ export default function Home() {
     setOtherStep("confirm");
     const ok = speak(`${value}, 맞으세요? 맞으면 맞다, 아니면 다시 말씀해주세요.`);
     setOtherVoiceStatus(ok ? `"${value}" 맞으세요?` : "음성 재생이 막혀 있어요 · 직접 입력해주세요");
-    listenOnce(
+    listen(
       (t) => otherHandleConfirmAnswer(value, t),
       () => setOtherVoiceStatus("음성 인식이 되지 않았어요 · 직접 입력하거나 다시 듣기를 눌러주세요"),
       { timeoutMs: 15000, continuous: true }
@@ -386,7 +409,7 @@ export default function Home() {
     } else {
       speak("잘 못 들었어요. 맞으면 맞다, 아니면 아니다 라고 말씀해주세요.");
       setOtherVoiceStatus("다시 들어볼게요");
-      listenOnce(
+      listen(
         (t) => otherHandleConfirmAnswer(candidate, t),
         () => setOtherVoiceStatus("음성 인식이 되지 않았어요 · 직접 입력하거나 다시 듣기를 눌러주세요"),
         { timeoutMs: 15000, continuous: true }
@@ -398,7 +421,7 @@ export default function Home() {
     setOtherStep("more");
     const ok = speak("더 추가하실 물건이 있으세요? 없으시면 없다고 말씀하시거나 닫기를 눌러주세요.");
     setOtherVoiceStatus(ok ? "더 추가하실 물건이 있으세요?" : "음성 재생이 막혀 있어요 · 없으시면 닫기를 눌러주세요");
-    listenOnce(
+    listen(
       (t) => otherHandleMoreAnswer(t),
       () => setOtherVoiceStatus("음성 인식이 되지 않았어요 · 없으시면 닫기를 눌러주세요"),
       { timeoutMs: 15000, continuous: true }
@@ -421,30 +444,26 @@ export default function Home() {
     else if (otherStep === "more") otherAskMore();
   }
 
+  function dateGiveUp() {
+    speak(VOICE_RETRY_HINT);
+    setDateVoiceStatus("잘 못 들었어요 · 음성입력을 원하시면 버튼을 다시 눌러주세요");
+  }
+
   function dateAskVoice() {
     const ok = speak("받고 싶은 날짜를 말씀해주세요. 예를 들어 8월 15일처럼 말씀해주세요.");
     setDateVoiceStatus(ok ? "날짜를 말씀해주세요" : "음성 재생이 막혀 있어요 · 달력에서 직접 골라주세요");
-    listenOnce(
-      (t) => dateConfirmCandidate(t),
-      () => setDateVoiceStatus("음성 인식이 되지 않았어요 · 달력에서 직접 골라주세요"),
-      { timeoutMs: 15000, continuous: true }
-    );
+    listen((t) => dateConfirmCandidate(t), dateGiveUp, { timeoutMs: 5000, continuous: true });
   }
 
   function dateConfirmCandidate(text: string) {
     const parsed = parseSpokenDate(text);
     if (!parsed) {
-      speak("날짜를 알아듣지 못했어요. 다시 말씀해주세요.");
-      dateAskVoice();
+      dateGiveUp();
       return;
     }
     const ok = speak(`${parsed.display}, 맞으세요? 맞으면 맞다, 아니면 다시 말씀해주세요.`);
     setDateVoiceStatus(ok ? `"${parsed.display}" 맞으세요?` : "음성 재생이 막혀 있어요 · 달력에서 직접 골라주세요");
-    listenOnce(
-      (t) => dateHandleConfirmAnswer(parsed, t),
-      () => setDateVoiceStatus("음성 인식이 되지 않았어요 · 달력에서 직접 골라주세요"),
-      { timeoutMs: 15000, continuous: true }
-    );
+    listen((t) => dateHandleConfirmAnswer(parsed, t), dateGiveUp, { timeoutMs: 5000, continuous: true });
   }
 
   function dateHandleConfirmAnswer(parsed: { value: string; display: string }, answer: string) {
@@ -456,13 +475,7 @@ export default function Home() {
       speak("다시 말씀해주세요.");
       dateAskVoice();
     } else {
-      speak("잘 못 들었어요. 맞으면 맞다, 아니면 아니다 라고 말씀해주세요.");
-      setDateVoiceStatus("다시 들어볼게요");
-      listenOnce(
-        (t) => dateHandleConfirmAnswer(parsed, t),
-        () => setDateVoiceStatus("음성 인식이 되지 않았어요 · 달력에서 직접 골라주세요"),
-        { timeoutMs: 15000, continuous: true }
-      );
+      dateGiveUp();
     }
   }
 
@@ -677,9 +690,45 @@ export default function Home() {
               </span>
             </button>
           </div>
-          <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t-[3px] border-frame bg-background pt-3.5">
-            <span className="text-[clamp(1.05rem,2.2vw,1.3rem)] font-extrabold">{totalLineCount}개 담았어요</span>
-            <button disabled={totalLineCount === 0} onClick={() => setScreen("delivery")} className={nextBtn}>
+          <div className="sticky bottom-0 flex flex-col gap-2.5 border-t-[3px] border-frame bg-background pt-3.5">
+            {totalLineCount > 0 ? (
+              <div className="max-h-[34vh] overflow-y-auto rounded-2xl border-2 border-frame bg-surface p-3">
+                <ul className="flex flex-col gap-2">
+                  {PRESET_ITEMS.flatMap((it) =>
+                    (itemLines[it.id] ?? []).map((line) => (
+                      <li
+                        key={`${it.id}-${line.variant}`}
+                        className="flex items-center justify-between gap-3 text-[clamp(.95rem,2vw,1.1rem)] font-bold"
+                      >
+                        <span>
+                          {it.label} · {line.variant} × {line.qty}개
+                        </span>
+                        <span className="shrink-0 font-semibold text-text-soft">
+                          {(line.price * line.qty).toLocaleString()}원
+                        </span>
+                      </li>
+                    ))
+                  )}
+                  {custom.map((text, i) => (
+                    <li
+                      key={`custom-${i}`}
+                      className="flex items-center justify-between gap-3 text-[clamp(.95rem,2vw,1.1rem)] font-bold"
+                    >
+                      <span>기타 · {text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-center text-[clamp(1rem,2.1vw,1.1rem)] font-bold text-text-soft">
+                아직 담은 물품이 없어요
+              </p>
+            )}
+            <button
+              disabled={totalLineCount === 0}
+              onClick={() => setScreen("delivery")}
+              className={`${nextBtn} self-end`}
+            >
               다음
             </button>
           </div>
@@ -759,7 +808,7 @@ export default function Home() {
             />
             <button
               onClick={() =>
-                listenOnce(
+                listen(
                   (t) => setAddress(t),
                   () => {},
                   { timeoutMs: 15000, continuous: true }
@@ -867,7 +916,7 @@ export default function Home() {
               />
               <button
                 onClick={() =>
-                  listenOnce(
+                  listen(
                     (t) => setOtherInput(t),
                     () => {},
                     { timeoutMs: 15000, continuous: true }
