@@ -155,7 +155,7 @@ export function IconCalendarPick({ className }: IconProps) {
       <rect x="3" y="5" width="18" height="16" rx="3" />
       <path d="M3 9h18" />
       <path d="M8 3v4M16 3v4" />
-      <path d="M15.5 13.5l2 2-5 5h-2v-2l5-5Z" />
+      <path d="M12 13v6M9 16h6" />
     </Base>
   );
 }
@@ -174,6 +174,25 @@ export function IconCard({ className }: IconProps) {
     <Base className={className}>
       <rect x="3" y="6" width="18" height="13" rx="2" />
       <path d="M3 10h18" />
+    </Base>
+  );
+}
+
+export function IconSpeaker({ className }: IconProps) {
+  return (
+    <Base className={className}>
+      <path d="M4 9v6h4l5 5V4L8 9H4Z" />
+      <path d="M16 8.5c1.3 1 1.3 6 0 7" />
+      <path d="M18.7 6c2.2 2.4 2.2 9.6 0 12" />
+    </Base>
+  );
+}
+
+export function IconSpeakerOff({ className }: IconProps) {
+  return (
+    <Base className={className}>
+      <path d="M4 9v6h4l5 5V4L8 9H4Z" />
+      <path d="M4 4l16 16" />
     </Base>
   );
 }

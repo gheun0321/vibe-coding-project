@@ -19,7 +19,10 @@ import {
   IconCalendarPick,
   IconCash,
   IconCard,
+  IconSpeaker,
+  IconSpeakerOff,
 } from "./icons";
+import { HangulKeypad } from "./hangul-keypad";
 
 type ScreenId = "home" | "items" | "delivery" | "address" | "payment" | "confirm";
 type Mode = "button" | "voice" | null;
@@ -269,8 +272,17 @@ export default function Home() {
   const [justAddedVariant, setJustAddedVariant] = useState<string | null>(null);
 
   const [dateVoiceStatus, setDateVoiceStatus] = useState("");
+  const [readAloud, setReadAloud] = useState(true);
+  const [keypadOpen, setKeypadOpen] = useState(false);
 
   const activeCancelRef = useRef<() => void>(() => {});
+
+  function toggleReadAloud() {
+    setReadAloud((prev) => {
+      if (prev) window.speechSynthesis?.cancel();
+      return !prev;
+    });
+  }
 
   function listen(onResult: (transcript: string) => void, onUnavailable: () => void, options?: ListenOptions) {
     activeCancelRef.current();
@@ -283,7 +295,7 @@ export default function Home() {
     return () => activeCancelRef.current();
   }, [screen]);
 
-  const voiceActive = mode === "voice" && screen !== "home";
+  const voiceActive = readAloud && screen !== "home";
 
   function deliveryNoticePhrase(): string {
     if (!delivery) return "";
@@ -295,12 +307,12 @@ export default function Home() {
 
   // 첫 화면: 매번 화면에 들어올 때 인사 + 화면 내용을 읽어줘요 (안내문구는 제외).
   useEffect(() => {
-    if (screen !== "home") return;
+    if (screen !== "home" || !readAloud) return;
     speak(HOME_GREETING);
-  }, [screen]);
+  }, [screen, readAloud]);
 
   useEffect(() => {
-    if (mode !== "voice" || screen === "home") return;
+    if (!readAloud || screen === "home") return;
 
     let prompt = "";
     let onResult: ((transcript: string) => void) | null = null;
@@ -333,7 +345,7 @@ export default function Home() {
     const timer = setTimeout(() => {
       const ok = speak(prompt);
       setVoiceStatus(ok ? "안내 음성을 재생하고 있어요" : "이 화면에서는 음성 재생이 막혀 있어요 · 그림을 눌러 골라주세요");
-      if (onResult) {
+      if (onResult && mode === "voice") {
         listen(
           onResult,
           () => {
@@ -345,17 +357,20 @@ export default function Home() {
     }, 0);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, mode, replayToken]);
+  }, [screen, mode, readAloud, replayToken]);
 
   useEffect(() => {
-    if (!(otherOpen && mode === "voice")) {
+    if (!otherOpen) {
       window.speechSynthesis?.cancel();
       return;
     }
-    const timer = setTimeout(() => otherAskName(), 0);
+    if (!readAloud) return;
+    const timer = setTimeout(() => {
+      const ok = speak("버튼을 눌러 원하시는 품목의 이름을 말씀하시거나, 입력란에 직접 입력해주세요.");
+      setOtherVoiceStatus(ok ? "버튼을 눌러 말씀하시거나 입력란에 입력해주세요" : "음성 재생이 막혀 있어요 · 입력란에 입력해주세요");
+    }, 0);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otherOpen, mode]);
+  }, [otherOpen, readAloud]);
 
   useEffect(() => {
     if (!(pickingCustomDate && mode === "voice" && screen === "delivery")) return;
@@ -369,6 +384,7 @@ export default function Home() {
     setOtherOpen(false);
     setOtherStep("idle");
     setOtherVoiceStatus("");
+    setKeypadOpen(false);
   }
 
   function otherAskName() {
@@ -442,6 +458,10 @@ export default function Home() {
     if (otherStep === "name") otherAskName();
     else if (otherStep === "confirm") otherConfirmCandidate(otherCandidate);
     else if (otherStep === "more") otherAskMore();
+    else {
+      const ok = speak("버튼을 눌러 원하시는 품목의 이름을 말씀하시거나, 입력란에 직접 입력해주세요.");
+      setOtherVoiceStatus(ok ? "버튼을 눌러 말씀하시거나 입력란에 입력해주세요" : "음성 재생이 막혀 있어요 · 입력란에 입력해주세요");
+    }
   }
 
   function dateGiveUp() {
@@ -587,7 +607,24 @@ export default function Home() {
   const openItemSubtotal = openItemLines.reduce((sum, line) => sum + line.price * line.qty, 0);
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-5 p-4 sm:p-8">
+    <div
+      className={`mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 sm:p-8 ${
+        screen === "items" ? "h-dvh overflow-hidden" : "min-h-screen"
+      }`}
+    >
+      <div className="flex shrink-0 justify-center">
+        <button
+          onClick={toggleReadAloud}
+          className="flex items-center gap-2.5 rounded-2xl border-[3px] border-frame bg-surface px-5 py-2.5 text-[clamp(1rem,2.1vw,1.2rem)] font-extrabold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2"
+        >
+          글 읽어주기
+          {readAloud ? (
+            <IconSpeaker className="h-6 w-6 text-accent-success" />
+          ) : (
+            <IconSpeakerOff className="h-6 w-6 text-text-soft" />
+          )}
+        </button>
+      </div>
       {screen === "home" && (
         <section className="flex flex-1 flex-col gap-6">
           <p className="text-center text-[clamp(1.5rem,4vw,2.4rem)] font-extrabold leading-snug text-balance">
@@ -627,7 +664,7 @@ export default function Home() {
       )}
 
       {screen !== "home" && (
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex shrink-0 items-center justify-between gap-3">
           {screen !== "confirm" ? (
             <button onClick={goBack} className={backBtn}>
               <IconBack className="h-[26px] w-[26px]" />
@@ -641,12 +678,14 @@ export default function Home() {
       )}
 
       {screen === "items" && (
-        <section className="flex flex-1 flex-col gap-5">
-          <p className="text-center text-[clamp(1.5rem,4vw,2.4rem)] font-extrabold text-balance">
+        <section className="flex min-h-0 flex-1 flex-col gap-5">
+          <p className="shrink-0 text-center text-[clamp(1.5rem,4vw,2.4rem)] font-extrabold text-balance">
             필요한 물건을 눌러 담아주세요
           </p>
-          <VoiceBanner active={voiceActive} status={voiceStatus} onReplay={() => setReplayToken((n) => n + 1)} />
-          <div className="grid flex-1 grid-cols-[repeat(auto-fit,minmax(140px,1fr))] content-start gap-4">
+          <div className="shrink-0">
+            <VoiceBanner active={voiceActive} status={voiceStatus} onReplay={() => setReplayToken((n) => n + 1)} />
+          </div>
+          <div className="grid shrink-0 grid-cols-[repeat(auto-fit,minmax(140px,1fr))] content-start gap-4">
             {PRESET_ITEMS.map((item) => {
               const lines = itemLines[item.id] ?? [];
               const configured = lines.length > 0;
@@ -690,9 +729,9 @@ export default function Home() {
               </span>
             </button>
           </div>
-          <div className="sticky bottom-0 flex flex-col gap-2.5 border-t-[3px] border-frame bg-background pt-3.5">
+          <div className="flex min-h-0 flex-1 flex-col gap-2.5 border-t-[3px] border-frame pt-3.5">
             {totalLineCount > 0 ? (
-              <div className="max-h-[34vh] overflow-y-auto rounded-2xl border-2 border-frame bg-surface p-3">
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border-2 border-frame bg-surface p-3">
                 <ul className="flex flex-col gap-2">
                   {PRESET_ITEMS.flatMap((it) =>
                     (itemLines[it.id] ?? []).map((line) => (
@@ -701,7 +740,7 @@ export default function Home() {
                         className="flex items-center justify-between gap-3 text-[clamp(.95rem,2vw,1.1rem)] font-bold"
                       >
                         <span>
-                          {it.label} · {line.variant} × {line.qty}개
+                          {line.variant} × {line.qty}개
                         </span>
                         <span className="shrink-0 font-semibold text-text-soft">
                           {(line.price * line.qty).toLocaleString()}원
@@ -714,7 +753,7 @@ export default function Home() {
                       key={`custom-${i}`}
                       className="flex items-center justify-between gap-3 text-[clamp(.95rem,2vw,1.1rem)] font-bold"
                     >
-                      <span>기타 · {text}</span>
+                      <span>{text}</span>
                     </li>
                   ))}
                 </ul>
@@ -727,7 +766,7 @@ export default function Home() {
             <button
               disabled={totalLineCount === 0}
               onClick={() => setScreen("delivery")}
-              className={`${nextBtn} self-end`}
+              className={`${nextBtn} shrink-0 self-end`}
             >
               다음
             </button>
@@ -756,9 +795,11 @@ export default function Home() {
             </button>
             <button
               onClick={openCustomDatePicker}
-              className={`${choiceCard} ${pickingCustomDate || delivery?.type === "custom" ? "border-accent-success shadow-[inset_0_0_0_3px_var(--accent-success)]" : ""}`}
+              className={`flex flex-1 min-w-[150px] flex-col items-center justify-center gap-3 rounded-[24px] border-4 bg-accent-button p-6 text-center text-white outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2 ${
+                pickingCustomDate || delivery?.type === "custom" ? "border-white" : "border-accent-button-deep"
+              }`}
             >
-              <IconCalendarPick className="h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] text-accent-success" />
+              <IconCalendarPick className="h-[clamp(60px,10vw,84px)] w-[clamp(60px,10vw,84px)]" />
               <span className="text-[clamp(1.15rem,2.6vw,1.5rem)] font-extrabold">다른 날짜</span>
             </button>
           </div>
@@ -850,11 +891,19 @@ export default function Home() {
           <p className="text-center text-[clamp(1.5rem,4vw,2.4rem)] font-extrabold text-balance">주문이 접수되었어요!</p>
           <VoiceBanner active={voiceActive} status={voiceStatus} onReplay={() => setReplayToken((n) => n + 1)} />
           <div className="mx-auto flex w-full max-w-xl flex-col gap-4 rounded-[24px] border-4 border-frame bg-surface p-6">
-            <div className="flex justify-between gap-3.5">
-              <span className="shrink-0 text-[clamp(1rem,2.2vw,1.2rem)] font-extrabold">담은 물품</span>
-              <span className="text-right text-[clamp(1rem,2.2vw,1.2rem)] font-semibold text-text-soft">
-                {summaryItems.join(", ") || "없음"}
-              </span>
+            <div className="flex flex-col gap-2">
+              <span className="text-[clamp(1rem,2.2vw,1.2rem)] font-extrabold">담은 물품</span>
+              {summaryItems.length > 0 ? (
+                <ul className="flex max-h-[200px] flex-col gap-1.5 overflow-y-auto rounded-xl border-2 border-frame bg-background p-2.5">
+                  {summaryItems.map((text, i) => (
+                    <li key={i} className="text-[clamp(1rem,2.1vw,1.15rem)] font-semibold text-text-soft">
+                      {text}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-semibold text-text-soft">없음</span>
+              )}
             </div>
             {itemsSubtotal > 0 && (
               <div className="flex justify-between gap-3.5">
@@ -901,33 +950,30 @@ export default function Home() {
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/45 p-5">
           <div className="flex w-full max-w-lg flex-col gap-4 rounded-[28px] border-[5px] border-frame bg-surface p-7">
             <h2 className="text-[clamp(1.3rem,2.8vw,1.6rem)] font-extrabold">기타 물품 입력</h2>
-            <VoiceBanner active={mode === "voice"} status={otherVoiceStatus} onReplay={otherReplay} />
-            {mode === "voice" && (
-              <p className="text-[clamp(.9rem,2vw,1.05rem)] font-semibold text-text-soft">
-                말씀하신 물건이 맞는지 소리로 확인해드려요. 다 담으셨으면 &quot;없다&quot;라고 말씀하시거나 닫기를 눌러주세요.
-              </p>
-            )}
+            <VoiceBanner active={readAloud} status={otherVoiceStatus} onReplay={otherReplay} />
+            <p className="text-[clamp(.9rem,2vw,1.05rem)] font-semibold text-text-soft">
+              버튼을 눌러 원하시는 품목의 이름을 말씀하시거나, 입력란에 직접 입력해주세요.
+            </p>
             <div className="flex gap-2.5">
               <input
                 value={otherInput}
                 onChange={(e) => setOtherInput(e.target.value)}
-                placeholder="예: 된장, 계란 한 판"
+                onClick={() => setKeypadOpen(true)}
+                readOnly
+                placeholder="눌러서 입력하기"
                 className="flex-1 rounded-[18px] border-[3px] border-frame bg-background px-4 py-3 text-[clamp(1.1rem,2.2vw,1.35rem)] text-foreground"
               />
               <button
-                onClick={() =>
-                  listen(
-                    (t) => setOtherInput(t),
-                    () => {},
-                    { timeoutMs: 15000, continuous: true }
-                  )
-                }
+                onClick={otherAskName}
                 className="flex items-center gap-2 rounded-2xl bg-accent-voice px-4 text-[clamp(1rem,2vw,1.15rem)] font-extrabold text-white"
               >
                 <IconMic className="h-[26px] w-[26px]" />
                 말하기
               </button>
             </div>
+            {keypadOpen && (
+              <HangulKeypad value={otherInput} onChange={setOtherInput} onClose={() => setKeypadOpen(false)} />
+            )}
             <div className="flex flex-wrap gap-2">
               {custom.map((text, i) => (
                 <span
