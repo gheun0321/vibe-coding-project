@@ -654,17 +654,27 @@ export default function Home() {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-5 p-4 sm:p-8">
       <div className="flex shrink-0 justify-center">
-        <button
-          onClick={toggleReadAloud}
-          className="flex items-center gap-2.5 rounded-2xl border-[3px] border-frame bg-surface px-5 py-2.5 text-[clamp(1rem,2.1vw,1.2rem)] font-extrabold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2"
-        >
-          글 읽어주기
-          {readAloud ? (
-            <IconSpeaker className="h-6 w-6 text-accent-success" />
-          ) : (
-            <IconSpeakerOff className="h-6 w-6 text-text-soft" />
-          )}
-        </button>
+        {screen === "home" ? (
+          <button
+            onClick={() => speak(HOME_GREETING)}
+            className="flex items-center gap-2.5 rounded-2xl bg-accent-voice px-5 py-2.5 text-[clamp(1rem,2.1vw,1.2rem)] font-extrabold text-white outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2"
+          >
+            <IconMic className="h-6 w-6" />
+            다시 듣기
+          </button>
+        ) : (
+          <button
+            onClick={toggleReadAloud}
+            className="flex items-center gap-2.5 rounded-2xl border-[3px] border-frame bg-surface px-5 py-2.5 text-[clamp(1rem,2.1vw,1.2rem)] font-extrabold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2"
+          >
+            글 읽어주기
+            {readAloud ? (
+              <IconSpeaker className="h-6 w-6 text-accent-success" />
+            ) : (
+              <IconSpeakerOff className="h-6 w-6 text-text-soft" />
+            )}
+          </button>
+        )}
       </div>
       {screen === "home" && (
         <section className="flex flex-1 flex-col gap-6">
