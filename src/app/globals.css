@@ -73,3 +73,15 @@ body {
   .blink-close-btn { animation: none !important; }
   .voice-wave-bar { animation: none !important; height: 16px !important; }
 }
+
+/* 연도-월-일 입력창 옆 달력 아이콘이 기본값으로는 작고 잘 안 보여서, 다른 날짜 아이콘과 비슷한 크기로 키우고
+   눈에 띄는 배경을 넣었어요. (파이어폭스는 이 아이콘을 브라우저가 직접 그려서 이 스타일이 적용되지 않아요) */
+.date-input-big::-webkit-calendar-picker-indicator {
+  width: clamp(40px, 7vw, 60px);
+  height: clamp(40px, 7vw, 60px);
+  padding: 6px;
+  margin-left: 8px;
+  border-radius: 12px;
+  background-color: var(--accent-success);
+  cursor: pointer;
+}

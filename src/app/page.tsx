@@ -407,6 +407,21 @@ export default function Home() {
     };
   }, [openItemId, readAloud]);
 
+  // 물품선택·배송일·배송지 화면에서: 5초 뒤 "다음" 안내 음성이 나오고, 화면을 벗어나지 않으면 30초마다 반복돼요.
+  useEffect(() => {
+    if (!readAloud) return;
+    if (screen !== "items" && screen !== "delivery" && screen !== "address") return;
+    let timer: ReturnType<typeof setTimeout>;
+    function scheduleNext(delay: number) {
+      timer = setTimeout(() => {
+        speak("선택이 끝나셨다면 다음 버튼을 눌러주세요.");
+        scheduleNext(30000);
+      }, delay);
+    }
+    scheduleNext(5000);
+    return () => clearTimeout(timer);
+  }, [screen, readAloud]);
+
   function closeOtherModal() {
     window.speechSynthesis?.cancel();
     setOtherOpen(false);
@@ -689,8 +704,8 @@ export default function Home() {
               onClick={() => chooseMode("button")}
               className="flex flex-1 flex-col items-center justify-center gap-4 rounded-[32px] border-[6px] border-accent-button-deep bg-accent-button p-8 text-white outline-none transition hover:brightness-105 active:scale-[.98] focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2"
             >
-              <IconEye className="h-[clamp(84px,14vw,150px)] w-[clamp(84px,14vw,150px)]" />
-              <span className="text-[clamp(1.5rem,3.6vw,2.3rem)] font-extrabold">
+              <IconEye className="h-[clamp(100px,18vw,190px)] w-[clamp(100px,18vw,190px)]" />
+              <span className="text-[clamp(1.7rem,4.4vw,2.8rem)] font-extrabold">
                 화면 보고
                 <br />
                 고르기
@@ -700,8 +715,8 @@ export default function Home() {
               onClick={() => chooseMode("voice")}
               className="flex flex-1 flex-col items-center justify-center gap-4 rounded-[32px] border-[6px] border-accent-voice-deep bg-accent-voice p-8 text-white outline-none transition hover:brightness-105 active:scale-[.98] focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2"
             >
-              <IconMic className="h-[clamp(84px,14vw,150px)] w-[clamp(84px,14vw,150px)]" />
-              <span className="text-[clamp(1.5rem,3.6vw,2.3rem)] font-extrabold">
+              <IconMic className="h-[clamp(100px,18vw,190px)] w-[clamp(100px,18vw,190px)]" />
+              <span className="text-[clamp(1.7rem,4.4vw,2.8rem)] font-extrabold">
                 소리 듣고
                 <br />
                 고르기
@@ -830,25 +845,29 @@ export default function Home() {
           <div className="flex flex-wrap justify-center gap-4">
             <button
               onClick={() => pickDate("today")}
-              className={`${choiceCard} ${delivery?.type === "today" ? "border-accent-success shadow-[inset_0_0_0_3px_var(--accent-success)]" : ""}`}
+              className={`${choiceCard} ${delivery?.type === "today" ? "border-accent-success bg-accent-success text-white" : ""}`}
             >
-              <IconCalendarToday className="h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] text-accent-success" />
+              <IconCalendarToday
+                className={`h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] ${delivery?.type === "today" ? "text-white" : "text-accent-success"}`}
+              />
               <span className="text-[clamp(1.15rem,2.6vw,1.5rem)] font-extrabold">오늘 배달</span>
             </button>
             <button
               onClick={() => pickDate("tomorrow")}
-              className={`${choiceCard} ${delivery?.type === "tomorrow" ? "border-accent-success shadow-[inset_0_0_0_3px_var(--accent-success)]" : ""}`}
+              className={`${choiceCard} ${delivery?.type === "tomorrow" ? "border-accent-success bg-accent-success text-white" : ""}`}
             >
-              <IconCalendarTomorrow className="h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] text-accent-success" />
+              <IconCalendarTomorrow
+                className={`h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] ${delivery?.type === "tomorrow" ? "text-white" : "text-accent-success"}`}
+              />
               <span className="text-[clamp(1.15rem,2.6vw,1.5rem)] font-extrabold">내일 배달</span>
             </button>
             <button
               onClick={openCustomDatePicker}
-              className={`flex flex-1 min-w-[150px] flex-col items-center justify-center gap-3 rounded-[24px] border-4 bg-accent-button p-6 text-center text-white outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2 ${
-                pickingCustomDate || delivery?.type === "custom" ? "border-white" : "border-accent-button-deep"
-              }`}
+              className={`${choiceCard} ${pickingCustomDate || delivery?.type === "custom" ? "border-accent-success bg-accent-success text-white" : ""}`}
             >
-              <IconCalendarPick className="h-[clamp(60px,10vw,84px)] w-[clamp(60px,10vw,84px)]" />
+              <IconCalendarPick
+                className={`h-[clamp(48px,8vw,68px)] w-[clamp(48px,8vw,68px)] ${pickingCustomDate || delivery?.type === "custom" ? "text-white" : "text-accent-success"}`}
+              />
               <span className="text-[clamp(1.15rem,2.6vw,1.5rem)] font-extrabold">다른 날짜</span>
             </button>
           </div>
@@ -860,7 +879,7 @@ export default function Home() {
                   autoFocus
                   value={customDate}
                   onChange={(e) => pickCustomDate(e.target.value)}
-                  className="rounded-2xl border-[3px] border-frame bg-surface px-4 py-3 text-[clamp(1.1rem,2.2vw,1.3rem)] text-foreground"
+                  className="date-input-big rounded-2xl border-[3px] border-frame bg-surface px-4 py-3.5 text-[clamp(1.15rem,2.4vw,1.4rem)] text-foreground"
                 />
                 <button
                   onClick={dateAskVoice}
