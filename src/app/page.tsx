@@ -196,7 +196,7 @@ function isNoMoreAnswer(text: string): boolean {
 
 function formatCustomDateLabel(value: string): string {
   const date = new Date(`${value}T00:00:00`);
-  return date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+  return date.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
 }
 
 // 쌀·물은 옵션 이름(예: "10kg", "500ml")만 보면 뭔지 헷갈릴 수 있어 앞에 카테고리 이름을 붙여줘요.
@@ -642,7 +642,11 @@ export default function Home() {
   function pickDate(type: "today" | "tomorrow") {
     setPickingCustomDate(false);
     setCalendarOpen(false);
-    setDelivery({ type, label: type === "today" ? "오늘 중" : "내일 중" });
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (type === "tomorrow" ? 1 : 0));
+    const numericDate = `${target.getMonth() + 1}월 ${target.getDate()}일`;
+    const phrase = type === "today" ? "오늘 중" : "내일 중";
+    setDelivery({ type, label: `${numericDate} ${phrase}` });
   }
 
   function openCustomDatePicker() {
@@ -831,11 +835,24 @@ export default function Home() {
                     (itemLines[it.id] ?? []).map((line) => (
                       <li
                         key={`${it.id}-${line.variant}`}
-                        className="flex items-center justify-between gap-3 text-[clamp(.95rem,2vw,1.1rem)] font-bold"
+                        className="flex flex-wrap items-center justify-between gap-2.5 text-[clamp(.95rem,2vw,1.1rem)] font-bold"
                       >
-                        <span>
-                          {lineDisplayName(it.id, line.variant)} × {line.qty}개
-                        </span>
+                        <span>{lineDisplayName(it.id, line.variant)}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => adjustLineQty(it.id, line.variant, -1)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
+                          >
+                            −
+                          </button>
+                          <span className="min-w-[3.5ch] text-center">{line.qty}개</span>
+                          <button
+                            onClick={() => adjustLineQty(it.id, line.variant, 1)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
+                          >
+                            +
+                          </button>
+                        </div>
                         <span className="shrink-0 font-semibold text-text-soft">
                           {(line.price * line.qty).toLocaleString()}원
                         </span>
