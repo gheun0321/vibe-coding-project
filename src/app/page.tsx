@@ -837,21 +837,23 @@ export default function Home() {
                         key={`${it.id}-${line.variant}`}
                         className="flex flex-wrap items-center justify-between gap-2.5 text-[clamp(.95rem,2vw,1.1rem)] font-bold"
                       >
-                        <span>{lineDisplayName(it.id, line.variant)}</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => adjustLineQty(it.id, line.variant, -1)}
-                            className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
-                          >
-                            −
-                          </button>
-                          <span className="min-w-[3.5ch] text-center">{line.qty}개</span>
-                          <button
-                            onClick={() => adjustLineQty(it.id, line.variant, 1)}
-                            className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
-                          >
-                            +
-                          </button>
+                        <div className="flex items-center gap-3">
+                          <span>{lineDisplayName(it.id, line.variant)}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => adjustLineQty(it.id, line.variant, -1)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
+                            >
+                              −
+                            </button>
+                            <span className="min-w-[3.5ch] text-center">{line.qty}개</span>
+                            <button
+                              onClick={() => adjustLineQty(it.id, line.variant, 1)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
+                            >
+                              +
+                            </button>
+                          </div>
                         </div>
                         <span className="shrink-0 font-semibold text-text-soft">
                           {(line.price * line.qty).toLocaleString()}원
@@ -1182,25 +1184,27 @@ export default function Home() {
                       justAddedVariant === line.variant ? "animate-[flash-pick_0.7s_ease-out]" : ""
                     }`}
                   >
-                    <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-bold">
-                      {lineDisplayName(openItemId, line.variant)}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => adjustLineQty(openItemId, line.variant, -1)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
-                      >
-                        −
-                      </button>
-                      <span className="min-w-[3.5ch] text-center text-[clamp(1rem,2.1vw,1.15rem)] font-extrabold">
-                        {line.qty}개
+                    <div className="flex items-center gap-3">
+                      <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-bold">
+                        {lineDisplayName(openItemId, line.variant)}
                       </span>
-                      <button
-                        onClick={() => adjustLineQty(openItemId, line.variant, 1)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
-                      >
-                        +
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => adjustLineQty(openItemId, line.variant, -1)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
+                        >
+                          −
+                        </button>
+                        <span className="min-w-[3.5ch] text-center text-[clamp(1rem,2.1vw,1.15rem)] font-extrabold">
+                          {line.qty}개
+                        </span>
+                        <button
+                          onClick={() => adjustLineQty(openItemId, line.variant, 1)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-frame text-lg font-extrabold"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                     <span className="flex items-center gap-2.5">
                       <span className="text-[clamp(.95rem,2vw,1.05rem)] font-semibold text-text-soft">
