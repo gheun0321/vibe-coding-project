@@ -199,6 +199,13 @@ function formatCustomDateLabel(value: string): string {
   return date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
 }
 
+// 쌀·물은 옵션 이름(예: "10kg", "500ml")만 보면 뭔지 헷갈릴 수 있어 앞에 카테고리 이름을 붙여줘요.
+const LINE_KEYWORD: Partial<Record<string, string>> = { rice: "쌀", water: "물" };
+function lineDisplayName(categoryId: string, variant: string): string {
+  const keyword = LINE_KEYWORD[categoryId];
+  return keyword ? `${keyword} ${variant}` : variant;
+}
+
 function parseSpokenDate(text: string): { value: string; display: string } | null {
   const match = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
   if (!match) return null;
@@ -370,7 +377,9 @@ export default function Home() {
         listen(
           onResult,
           () => {
-            setVoiceStatus("그림을 눌러 골라주세요 (음성 인식은 이 환경에서 막혀 있을 수 있어요)");
+            if (screen !== "address") {
+              setVoiceStatus("그림을 눌러 골라주세요 (음성 인식은 이 환경에서 막혀 있을 수 있어요)");
+            }
           },
           listenOptions
         );
@@ -677,7 +686,9 @@ export default function Home() {
     .reduce((sum, line) => sum + line.price * line.qty, 0);
   const summaryItems = [
     ...PRESET_ITEMS.flatMap((it) =>
-      (itemLines[it.id] ?? []).map((line) => `${line.variant} × ${line.qty}개 (${(line.price * line.qty).toLocaleString()}원)`)
+      (itemLines[it.id] ?? []).map(
+        (line) => `${lineDisplayName(it.id, line.variant)} × ${line.qty}개 (${(line.price * line.qty).toLocaleString()}원)`
+      )
     ),
     ...custom,
   ];
@@ -823,7 +834,7 @@ export default function Home() {
                         className="flex items-center justify-between gap-3 text-[clamp(.95rem,2vw,1.1rem)] font-bold"
                       >
                         <span>
-                          {line.variant} × {line.qty}개
+                          {lineDisplayName(it.id, line.variant)} × {line.qty}개
                         </span>
                         <span className="shrink-0 font-semibold text-text-soft">
                           {(line.price * line.qty).toLocaleString()}원
@@ -1154,7 +1165,9 @@ export default function Home() {
                       justAddedVariant === line.variant ? "animate-[flash-pick_0.7s_ease-out]" : ""
                     }`}
                   >
-                    <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-bold">{line.variant}</span>
+                    <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-bold">
+                      {lineDisplayName(openItemId, line.variant)}
+                    </span>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => adjustLineQty(openItemId, line.variant, -1)}
