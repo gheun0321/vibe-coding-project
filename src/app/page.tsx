@@ -25,7 +25,7 @@ type ScreenId = "home" | "items" | "delivery" | "address" | "payment" | "confirm
 type Mode = "button" | "voice" | null;
 type PaymentMethod = "meet" | "card" | null;
 type DateChoice = "today" | "tomorrow" | "custom";
-type ItemConfig = { variant: string; qty: number };
+type LineItem = { variant: string; qty: number; price: number };
 
 type PresetItem = {
   id: string;
@@ -44,18 +44,22 @@ const PRESET_ITEMS: PresetItem[] = [
   { id: "med", label: "약·건강용품", Icon: IconMed },
 ];
 
-// 어르신들이 자주 찾는 품목/용량 위주로 구성했어요. 필요하면 언제든 목록을 바꿀 수 있어요.
-const ITEM_VARIANTS: Record<string, string[]> = {
-  veg: ["배추", "무", "감자", "양파", "당근", "시금치", "콩나물", "오이"],
-  fruit: ["사과", "배", "바나나", "귤", "포도", "감", "수박", "참외"],
-  rice: ["300g", "500g", "1kg", "2kg", "5kg", "10kg", "20kg"],
-  water: ["100ml", "150ml", "200ml", "300ml", "500ml", "1L", "2L"],
+// 어르신들이 자주 찾는 품목/용량과, 대략적인 가격(원)을 함께 구성했어요. 실제 상점 가격에 맞춰 언제든 바꿀 수 있어요.
+const ITEM_PRICES: Record<string, Record<string, number>> = {
+  veg: { 배추: 3000, 무: 2000, 감자: 4000, 양파: 3500, 당근: 3000, 시금치: 2500, 콩나물: 1500, 오이: 3000 },
+  fruit: { 사과: 5000, 배: 6000, 바나나: 4000, 귤: 5000, 포도: 7000, 감: 4500, 수박: 15000, 참외: 6000 },
+  rice: { "300g": 2500, "500g": 3500, "1kg": 5000, "2kg": 8000, "5kg": 18000, "10kg": 32000, "20kg": 58000 },
+  water: { "100ml": 500, "150ml": 600, "200ml": 700, "300ml": 900, "500ml": 1000, "1L": 1500, "2L": 2000 },
   // 화장지·키친타올·세제처럼 무거워서 어르신이 직접 사 오기 힘든 것 위주
-  daily: ["화장지", "키친타올", "칫솔", "치약", "주방세제", "빨래세제", "물티슈"],
-  snack: ["뻥튀기", "약과", "두유", "요구르트", "비스킷", "카스테라", "사탕"],
+  daily: { 화장지: 12000, 키친타올: 6000, 칫솔: 2000, 치약: 3000, 주방세제: 4000, 빨래세제: 9000, 물티슈: 5000 },
+  snack: { 뻥튀기: 2000, 약과: 5000, 두유: 4000, 요구르트: 3000, 비스킷: 2500, 카스테라: 4000, 사탕: 2000 },
   // 편의점에서도 살 수 있는 상비약 위주 (파스, 벌레 물린 데 바르는 약 등)
-  med: ["파스", "물파스(벌레 물린 데)", "소화제", "감기약", "진통제", "밴드", "마스크"],
+  med: { 파스: 4000, "물파스(벌레 물린 데)": 3000, 소화제: 3500, 감기약: 5000, 진통제: 4500, 밴드: 2000, 마스크: 3000 },
 };
+
+const ITEM_VARIANTS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(ITEM_PRICES).map(([id, prices]) => [id, Object.keys(prices)])
+);
 
 const STEP_ORDER: ScreenId[] = ["home", "items", "delivery", "address", "payment", "confirm"];
 const STEP_LABEL: Partial<Record<ScreenId, string>> = {
@@ -233,7 +237,7 @@ function VoiceBanner({
 export default function Home() {
   const [screen, setScreen] = useState<ScreenId>("home");
   const [mode, setMode] = useState<Mode>(null);
-  const [itemConfigs, setItemConfigs] = useState<Record<string, ItemConfig>>({});
+  const [itemLines, setItemLines] = useState<Record<string, LineItem[]>>({});
   const [custom, setCustom] = useState<string[]>([]);
   const [delivery, setDelivery] = useState<{ type: DateChoice; label: string } | null>(null);
   const [customDate, setCustomDate] = useState("");
@@ -252,6 +256,7 @@ export default function Home() {
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [draftVariant, setDraftVariant] = useState("");
   const [draftQty, setDraftQty] = useState(1);
+  const [justAddedVariant, setJustAddedVariant] = useState<string | null>(null);
 
   const [dateVoiceStatus, setDateVoiceStatus] = useState("");
 
@@ -473,27 +478,36 @@ export default function Home() {
   }
 
   function openItemPopup(id: string) {
-    const existing = itemConfigs[id];
     const options = ITEM_VARIANTS[id] ?? [];
-    setDraftVariant(existing?.variant ?? options[0] ?? "");
-    setDraftQty(existing?.qty ?? 1);
+    setDraftVariant(options[0] ?? "");
+    setDraftQty(1);
+    setJustAddedVariant(null);
     setOpenItemId(id);
   }
 
-  function saveItemPopup() {
+  function addLineItem() {
     if (!openItemId || !draftVariant) return;
-    setItemConfigs((prev) => ({ ...prev, [openItemId]: { variant: draftVariant, qty: draftQty } }));
-    setOpenItemId(null);
+    const price = ITEM_PRICES[openItemId]?.[draftVariant] ?? 0;
+    const categoryId = openItemId;
+    setItemLines((prev) => {
+      const lines = prev[categoryId] ?? [];
+      const idx = lines.findIndex((line) => line.variant === draftVariant);
+      const nextLines =
+        idx >= 0
+          ? lines.map((line, i) => (i === idx ? { ...line, qty: line.qty + draftQty } : line))
+          : [...lines, { variant: draftVariant, qty: draftQty, price }];
+      return { ...prev, [categoryId]: nextLines };
+    });
+    setJustAddedVariant(draftVariant);
+    setTimeout(() => setJustAddedVariant(null), 700);
+    setDraftQty(1);
   }
 
-  function removeItemPopup() {
-    if (!openItemId) return;
-    setItemConfigs((prev) => {
-      const next = { ...prev };
-      delete next[openItemId];
-      return next;
-    });
-    setOpenItemId(null);
+  function removeLineItem(categoryId: string, variant: string) {
+    setItemLines((prev) => ({
+      ...prev,
+      [categoryId]: (prev[categoryId] ?? []).filter((line) => line.variant !== variant),
+    }));
   }
 
   function addCustomItem() {
@@ -536,7 +550,7 @@ export default function Home() {
     window.speechSynthesis?.cancel();
     setScreen("home");
     setMode(null);
-    setItemConfigs({});
+    setItemLines({});
     setCustom([]);
     setDelivery(null);
     setCustomDate("");
@@ -545,13 +559,19 @@ export default function Home() {
     setPayment(null);
   }
 
-  const configuredItems = PRESET_ITEMS.filter((it) => itemConfigs[it.id]);
-  const itemCount = configuredItems.length + custom.length;
+  const totalLineCount = Object.values(itemLines).reduce((sum, lines) => sum + lines.length, 0) + custom.length;
+  const itemsSubtotal = Object.values(itemLines)
+    .flat()
+    .reduce((sum, line) => sum + line.price * line.qty, 0);
   const summaryItems = [
-    ...configuredItems.map((it) => `${it.label} ${itemConfigs[it.id].variant} × ${itemConfigs[it.id].qty}개`),
+    ...PRESET_ITEMS.flatMap((it) =>
+      (itemLines[it.id] ?? []).map((line) => `${line.variant} × ${line.qty}개 (${(line.price * line.qty).toLocaleString()}원)`)
+    ),
     ...custom,
   ];
   const openItem = PRESET_ITEMS.find((it) => it.id === openItemId);
+  const openItemLines = openItemId ? itemLines[openItemId] ?? [] : [];
+  const openItemSubtotal = openItemLines.reduce((sum, line) => sum + line.price * line.qty, 0);
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-5 p-4 sm:p-8">
@@ -615,25 +635,26 @@ export default function Home() {
           <VoiceBanner active={voiceActive} status={voiceStatus} onReplay={() => setReplayToken((n) => n + 1)} />
           <div className="grid flex-1 grid-cols-[repeat(auto-fit,minmax(140px,1fr))] content-start gap-4">
             {PRESET_ITEMS.map((item) => {
-              const config = itemConfigs[item.id];
+              const lines = itemLines[item.id] ?? [];
+              const configured = lines.length > 0;
               return (
                 <button
                   key={item.id}
                   onClick={() => openItemPopup(item.id)}
-                  className={`${cardBase} ${config ? "border-accent-success shadow-[inset_0_0_0_3px_var(--accent-success)]" : ""}`}
+                  className={`${cardBase} ${configured ? "border-accent-success shadow-[inset_0_0_0_3px_var(--accent-success)]" : ""}`}
                 >
                   <span
-                    className={`absolute right-2 top-2 flex h-[30px] w-[30px] items-center justify-center rounded-full bg-accent-success text-white ${config ? "flex" : "hidden"}`}
+                    className={`absolute right-2 top-2 flex h-[30px] w-[30px] items-center justify-center rounded-full bg-accent-success text-white ${configured ? "flex" : "hidden"}`}
                   >
                     <IconCheck className="h-[18px] w-[18px]" />
                   </span>
                   <item.Icon
-                    className={`h-[clamp(48px,7vw,72px)] w-[clamp(48px,7vw,72px)] ${config ? "text-accent-success" : "text-text-soft"}`}
+                    className={`h-[clamp(48px,7vw,72px)] w-[clamp(48px,7vw,72px)] ${configured ? "text-accent-success" : "text-text-soft"}`}
                   />
                   <span className="text-[clamp(1.1rem,2.4vw,1.4rem)] font-extrabold">{item.label}</span>
-                  {config && (
+                  {configured && (
                     <span className="text-[clamp(.85rem,1.8vw,1rem)] font-bold text-accent-success">
-                      {config.variant} × {config.qty}개
+                      {lines.length === 1 ? `${lines[0].variant} × ${lines[0].qty}개` : `${lines.length}가지 담음`}
                     </span>
                   )}
                 </button>
@@ -657,8 +678,8 @@ export default function Home() {
             </button>
           </div>
           <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t-[3px] border-frame bg-background pt-3.5">
-            <span className="text-[clamp(1.05rem,2.2vw,1.3rem)] font-extrabold">{itemCount}개 담았어요</span>
-            <button disabled={itemCount === 0} onClick={() => setScreen("delivery")} className={nextBtn}>
+            <span className="text-[clamp(1.05rem,2.2vw,1.3rem)] font-extrabold">{totalLineCount}개 담았어요</span>
+            <button disabled={totalLineCount === 0} onClick={() => setScreen("delivery")} className={nextBtn}>
               다음
             </button>
           </div>
@@ -786,6 +807,14 @@ export default function Home() {
                 {summaryItems.join(", ") || "없음"}
               </span>
             </div>
+            {itemsSubtotal > 0 && (
+              <div className="flex justify-between gap-3.5">
+                <span className="shrink-0 text-[clamp(1rem,2.2vw,1.2rem)] font-extrabold">물품 금액</span>
+                <span className="text-right text-[clamp(1rem,2.2vw,1.2rem)] font-semibold text-text-soft">
+                  {itemsSubtotal.toLocaleString()}원{custom.length > 0 ? " (기타 품목 제외)" : ""}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between gap-3.5">
               <span className="shrink-0 text-[clamp(1rem,2.2vw,1.2rem)] font-extrabold">배송일</span>
               <span className="text-right text-[clamp(1rem,2.2vw,1.2rem)] font-semibold text-text-soft">
@@ -910,32 +939,52 @@ export default function Home() {
                 +
               </button>
             </div>
-            <div className="flex items-center justify-between gap-2.5">
-              {itemConfigs[openItemId] ? (
-                <button
-                  onClick={removeItemPopup}
-                  className="rounded-2xl border-[3px] border-frame px-5 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-bold"
-                >
-                  빼기
-                </button>
-              ) : (
-                <span />
-              )}
-              <div className="flex gap-2.5">
-                <button
-                  onClick={() => setOpenItemId(null)}
-                  className="rounded-2xl border-[3px] border-frame px-5 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-bold"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={saveItemPopup}
-                  className="rounded-2xl bg-accent-success px-5.5 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-extrabold text-white"
-                >
-                  저장
-                </button>
+            <button
+              onClick={addLineItem}
+              disabled={!draftVariant}
+              className="rounded-2xl bg-accent-success px-6 py-3 text-[clamp(1.05rem,2.2vw,1.25rem)] font-extrabold text-white disabled:bg-frame disabled:text-text-soft"
+            >
+              {draftVariant || "물건"} 담기
+            </button>
+
+            {openItemLines.length > 0 && (
+              <div className="flex flex-col gap-2 border-t-[3px] border-frame pt-4">
+                <span className="text-[clamp(.95rem,2vw,1.1rem)] font-extrabold text-text-soft">담은 목록</span>
+                {openItemLines.map((line) => (
+                  <div
+                    key={line.variant}
+                    className={`flash-row flex items-center justify-between rounded-xl border-2 border-frame bg-background px-3.5 py-2.5 ${
+                      justAddedVariant === line.variant ? "animate-[flash-pick_0.7s_ease-out]" : ""
+                    }`}
+                  >
+                    <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-bold">
+                      {line.variant} × {line.qty}개
+                    </span>
+                    <span className="flex items-center gap-2.5">
+                      <span className="text-[clamp(.95rem,2vw,1.05rem)] font-semibold text-text-soft">
+                        {(line.price * line.qty).toLocaleString()}원
+                      </span>
+                      <button
+                        onClick={() => removeLineItem(openItemId, line.variant)}
+                        className="flex h-[24px] w-[24px] items-center justify-center rounded-full bg-frame font-extrabold leading-none"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  </div>
+                ))}
+                <div className="flex justify-end text-[clamp(1rem,2.1vw,1.15rem)] font-extrabold">
+                  {openItemSubtotal.toLocaleString()}원
+                </div>
               </div>
-            </div>
+            )}
+
+            <button
+              onClick={() => setOpenItemId(null)}
+              className="self-end rounded-2xl border-[3px] border-frame px-6 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-bold"
+            >
+              닫기
+            </button>
           </div>
         </div>
       )}

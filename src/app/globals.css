@@ -52,6 +52,15 @@ body {
   50% { height: 24px; }
 }
 
+@keyframes flash-pick {
+  0% { background-color: var(--accent-success); color: #fff; transform: scale(1.04); }
+  100% { background-color: var(--surface); color: var(--foreground); transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-row { animation: none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .voice-wave-bar { animation: none !important; height: 16px !important; }
 }
