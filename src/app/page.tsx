@@ -25,6 +25,7 @@ type ScreenId = "home" | "items" | "delivery" | "address" | "payment" | "confirm
 type Mode = "button" | "voice" | null;
 type PaymentMethod = "meet" | "card" | null;
 type DateChoice = "today" | "tomorrow" | "custom";
+type ItemConfig = { variant: string; qty: number };
 
 type PresetItem = {
   id: string;
@@ -32,15 +33,29 @@ type PresetItem = {
   Icon: (props: { className?: string }) => React.ReactElement;
 };
 
+// 순서는 음성 안내 멘트("채소, 과일, 쌀, 물, 생활용품, 간식, 약과 건강용품")와 맞춰뒀어요.
 const PRESET_ITEMS: PresetItem[] = [
-  { id: "rice", label: "쌀", Icon: IconRice },
-  { id: "water", label: "물", Icon: IconWater },
   { id: "veg", label: "채소", Icon: IconVeg },
   { id: "fruit", label: "과일", Icon: IconFruit },
+  { id: "rice", label: "쌀", Icon: IconRice },
+  { id: "water", label: "물", Icon: IconWater },
   { id: "daily", label: "생활용품", Icon: IconDaily },
   { id: "snack", label: "간식", Icon: IconSnack },
   { id: "med", label: "약·건강용품", Icon: IconMed },
 ];
+
+// 어르신들이 자주 찾는 품목/용량 위주로 구성했어요. 필요하면 언제든 목록을 바꿀 수 있어요.
+const ITEM_VARIANTS: Record<string, string[]> = {
+  veg: ["배추", "무", "감자", "양파", "당근", "시금치", "콩나물", "오이"],
+  fruit: ["사과", "배", "바나나", "귤", "포도", "감", "수박", "참외"],
+  rice: ["300g", "500g", "1kg", "2kg", "5kg", "10kg", "20kg"],
+  water: ["100ml", "150ml", "200ml", "300ml", "500ml", "1L", "2L"],
+  // 화장지·키친타올·세제처럼 무거워서 어르신이 직접 사 오기 힘든 것 위주
+  daily: ["화장지", "키친타올", "칫솔", "치약", "주방세제", "빨래세제", "물티슈"],
+  snack: ["뻥튀기", "약과", "두유", "요구르트", "비스킷", "카스테라", "사탕"],
+  // 편의점에서도 살 수 있는 상비약 위주 (파스, 벌레 물린 데 바르는 약 등)
+  med: ["파스", "물파스(벌레 물린 데)", "소화제", "감기약", "진통제", "밴드", "마스크"],
+};
 
 const STEP_ORDER: ScreenId[] = ["home", "items", "delivery", "address", "payment", "confirm"];
 const STEP_LABEL: Partial<Record<ScreenId, string>> = {
@@ -50,6 +65,9 @@ const STEP_LABEL: Partial<Record<ScreenId, string>> = {
   payment: "4/5 · 결제 방법",
   confirm: "5/5 · 주문 완료",
 };
+
+const HOME_GREETING =
+  "안녕하세요. 오늘은 무엇을 주문해 볼까요? 그림을 눌러 방법을 골라주세요. 화면 보고 고르기. 소리 듣고 고르기.";
 
 function speak(text: string): boolean {
   try {
@@ -149,14 +167,35 @@ function formatCustomDateLabel(value: string): string {
   return date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
 }
 
+function parseSpokenDate(text: string): { value: string; display: string } | null {
+  const match = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (!match) return null;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const now = new Date();
+  let year = now.getFullYear();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (new Date(year, month - 1, day).getTime() < todayStart) year += 1;
+
+  const value = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return { value, display: formatCustomDateLabel(value) };
+}
+
 const cardBase =
-  "relative flex flex-col items-center justify-center gap-2.5 rounded-[26px] border-[5px] border-frame bg-surface p-4 min-h-[150px] cursor-pointer text-center outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
+  "relative flex flex-col items-center justify-center gap-2 rounded-[26px] border-[5px] border-frame bg-surface p-4 min-h-[150px] cursor-pointer text-center outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
 const choiceCard =
   "flex flex-1 min-w-[150px] flex-col items-center justify-center gap-3 rounded-[24px] border-4 border-frame bg-surface p-6 cursor-pointer text-center outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
 const nextBtn =
   "rounded-[20px] bg-accent-success px-8 py-3.5 text-[clamp(1.05rem,2.2vw,1.3rem)] font-extrabold text-white disabled:bg-frame disabled:text-text-soft disabled:cursor-not-allowed";
 const backBtn =
   "flex items-center gap-2 rounded-[18px] border-[3px] border-frame bg-surface px-4 py-2.5 text-[clamp(1.05rem,2vw,1.3rem)] font-bold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
+const variantChip =
+  "rounded-2xl border-[3px] border-frame bg-background px-4 py-2.5 text-[clamp(1rem,2vw,1.15rem)] font-bold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
+const variantChipSelected = "border-accent-success bg-accent-success text-white";
+const stepperBtn =
+  "flex h-12 w-12 items-center justify-center rounded-full border-[3px] border-frame text-2xl font-extrabold outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2";
 
 function VoiceBanner({
   active,
@@ -194,7 +233,7 @@ function VoiceBanner({
 export default function Home() {
   const [screen, setScreen] = useState<ScreenId>("home");
   const [mode, setMode] = useState<Mode>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [itemConfigs, setItemConfigs] = useState<Record<string, ItemConfig>>({});
   const [custom, setCustom] = useState<string[]>([]);
   const [delivery, setDelivery] = useState<{ type: DateChoice; label: string } | null>(null);
   const [customDate, setCustomDate] = useState("");
@@ -210,6 +249,12 @@ export default function Home() {
   const [otherCandidate, setOtherCandidate] = useState("");
   const [otherVoiceStatus, setOtherVoiceStatus] = useState("");
 
+  const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const [draftVariant, setDraftVariant] = useState("");
+  const [draftQty, setDraftQty] = useState(1);
+
+  const [dateVoiceStatus, setDateVoiceStatus] = useState("");
+
   const voiceActive = mode === "voice" && screen !== "home";
 
   function deliveryNoticePhrase(): string {
@@ -219,6 +264,12 @@ export default function Home() {
     if (delivery.type === "custom" && customDate) return `${formatCustomDateLabel(customDate)}에`;
     return "";
   }
+
+  // 첫 화면: 매번 화면에 들어올 때 인사 + 화면 내용을 읽어줘요 (안내문구는 제외).
+  useEffect(() => {
+    if (screen !== "home") return;
+    speak(HOME_GREETING);
+  }, [screen]);
 
   useEffect(() => {
     if (mode !== "voice" || screen === "home") return;
@@ -277,6 +328,13 @@ export default function Home() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otherOpen, mode]);
+
+  useEffect(() => {
+    if (!(pickingCustomDate && mode === "voice" && screen === "delivery")) return;
+    const timer = setTimeout(() => dateAskVoice(), 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickingCustomDate, mode, screen]);
 
   function closeOtherModal() {
     window.speechSynthesis?.cancel();
@@ -358,6 +416,51 @@ export default function Home() {
     else if (otherStep === "more") otherAskMore();
   }
 
+  function dateAskVoice() {
+    const ok = speak("받고 싶은 날짜를 말씀해주세요. 예를 들어 8월 15일처럼 말씀해주세요.");
+    setDateVoiceStatus(ok ? "날짜를 말씀해주세요" : "음성 재생이 막혀 있어요 · 달력에서 직접 골라주세요");
+    listenOnce(
+      (t) => dateConfirmCandidate(t),
+      () => setDateVoiceStatus("음성 인식이 되지 않았어요 · 달력에서 직접 골라주세요"),
+      { timeoutMs: 15000, continuous: true }
+    );
+  }
+
+  function dateConfirmCandidate(text: string) {
+    const parsed = parseSpokenDate(text);
+    if (!parsed) {
+      speak("날짜를 알아듣지 못했어요. 다시 말씀해주세요.");
+      dateAskVoice();
+      return;
+    }
+    const ok = speak(`${parsed.display}, 맞으세요? 맞으면 맞다, 아니면 다시 말씀해주세요.`);
+    setDateVoiceStatus(ok ? `"${parsed.display}" 맞으세요?` : "음성 재생이 막혀 있어요 · 달력에서 직접 골라주세요");
+    listenOnce(
+      (t) => dateHandleConfirmAnswer(parsed, t),
+      () => setDateVoiceStatus("음성 인식이 되지 않았어요 · 달력에서 직접 골라주세요"),
+      { timeoutMs: 15000, continuous: true }
+    );
+  }
+
+  function dateHandleConfirmAnswer(parsed: { value: string; display: string }, answer: string) {
+    if (isYesAnswer(answer)) {
+      pickCustomDate(parsed.value);
+      speak(`${parsed.display}로 담았어요.`);
+      setDateVoiceStatus(`${parsed.display}로 담았어요`);
+    } else if (isNoAnswer(answer)) {
+      speak("다시 말씀해주세요.");
+      dateAskVoice();
+    } else {
+      speak("잘 못 들었어요. 맞으면 맞다, 아니면 아니다 라고 말씀해주세요.");
+      setDateVoiceStatus("다시 들어볼게요");
+      listenOnce(
+        (t) => dateHandleConfirmAnswer(parsed, t),
+        () => setDateVoiceStatus("음성 인식이 되지 않았어요 · 달력에서 직접 골라주세요"),
+        { timeoutMs: 15000, continuous: true }
+      );
+    }
+  }
+
   function chooseMode(m: "button" | "voice") {
     setMode(m);
     setScreen("items");
@@ -369,13 +472,28 @@ export default function Home() {
     setScreen(STEP_ORDER[Math.max(0, idx - 1)]);
   }
 
-  function toggleItem(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  function openItemPopup(id: string) {
+    const existing = itemConfigs[id];
+    const options = ITEM_VARIANTS[id] ?? [];
+    setDraftVariant(existing?.variant ?? options[0] ?? "");
+    setDraftQty(existing?.qty ?? 1);
+    setOpenItemId(id);
+  }
+
+  function saveItemPopup() {
+    if (!openItemId || !draftVariant) return;
+    setItemConfigs((prev) => ({ ...prev, [openItemId]: { variant: draftVariant, qty: draftQty } }));
+    setOpenItemId(null);
+  }
+
+  function removeItemPopup() {
+    if (!openItemId) return;
+    setItemConfigs((prev) => {
+      const next = { ...prev };
+      delete next[openItemId];
       return next;
     });
+    setOpenItemId(null);
   }
 
   function addCustomItem() {
@@ -418,7 +536,7 @@ export default function Home() {
     window.speechSynthesis?.cancel();
     setScreen("home");
     setMode(null);
-    setSelected(new Set());
+    setItemConfigs({});
     setCustom([]);
     setDelivery(null);
     setCustomDate("");
@@ -427,8 +545,13 @@ export default function Home() {
     setPayment(null);
   }
 
-  const itemCount = selected.size + custom.length;
-  const summaryItems = [...PRESET_ITEMS.filter((it) => selected.has(it.id)).map((it) => it.label), ...custom];
+  const configuredItems = PRESET_ITEMS.filter((it) => itemConfigs[it.id]);
+  const itemCount = configuredItems.length + custom.length;
+  const summaryItems = [
+    ...configuredItems.map((it) => `${it.label} ${itemConfigs[it.id].variant} × ${itemConfigs[it.id].qty}개`),
+    ...custom,
+  ];
+  const openItem = PRESET_ITEMS.find((it) => it.id === openItemId);
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-5 p-4 sm:p-8">
@@ -492,22 +615,27 @@ export default function Home() {
           <VoiceBanner active={voiceActive} status={voiceStatus} onReplay={() => setReplayToken((n) => n + 1)} />
           <div className="grid flex-1 grid-cols-[repeat(auto-fit,minmax(140px,1fr))] content-start gap-4">
             {PRESET_ITEMS.map((item) => {
-              const isSelected = selected.has(item.id);
+              const config = itemConfigs[item.id];
               return (
                 <button
                   key={item.id}
-                  onClick={() => toggleItem(item.id)}
-                  className={`${cardBase} ${isSelected ? "border-accent-success shadow-[inset_0_0_0_3px_var(--accent-success)]" : ""}`}
+                  onClick={() => openItemPopup(item.id)}
+                  className={`${cardBase} ${config ? "border-accent-success shadow-[inset_0_0_0_3px_var(--accent-success)]" : ""}`}
                 >
                   <span
-                    className={`absolute right-2 top-2 flex h-[30px] w-[30px] items-center justify-center rounded-full bg-accent-success text-white ${isSelected ? "flex" : "hidden"}`}
+                    className={`absolute right-2 top-2 flex h-[30px] w-[30px] items-center justify-center rounded-full bg-accent-success text-white ${config ? "flex" : "hidden"}`}
                   >
                     <IconCheck className="h-[18px] w-[18px]" />
                   </span>
                   <item.Icon
-                    className={`h-[clamp(52px,8vw,80px)] w-[clamp(52px,8vw,80px)] ${isSelected ? "text-accent-success" : "text-text-soft"}`}
+                    className={`h-[clamp(48px,7vw,72px)] w-[clamp(48px,7vw,72px)] ${config ? "text-accent-success" : "text-text-soft"}`}
                   />
                   <span className="text-[clamp(1.1rem,2.4vw,1.4rem)] font-extrabold">{item.label}</span>
+                  {config && (
+                    <span className="text-[clamp(.85rem,1.8vw,1rem)] font-bold text-accent-success">
+                      {config.variant} × {config.qty}개
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -521,7 +649,7 @@ export default function Home() {
                 <IconCheck className="h-[18px] w-[18px]" />
               </span>
               <IconOther
-                className={`h-[clamp(52px,8vw,80px)] w-[clamp(52px,8vw,80px)] ${custom.length > 0 ? "text-accent-success" : "text-text-soft"}`}
+                className={`h-[clamp(48px,7vw,72px)] w-[clamp(48px,7vw,72px)] ${custom.length > 0 ? "text-accent-success" : "text-text-soft"}`}
               />
               <span className="text-[clamp(1.1rem,2.4vw,1.4rem)] font-extrabold">
                 기타(직접 입력){custom.length > 0 ? ` · ${custom.length}개` : ""}
@@ -565,14 +693,24 @@ export default function Home() {
             </button>
           </div>
           {pickingCustomDate ? (
-            <div className="flex justify-center">
-              <input
-                type="date"
-                autoFocus
-                value={customDate}
-                onChange={(e) => pickCustomDate(e.target.value)}
-                className="rounded-2xl border-[3px] border-frame bg-surface px-4 py-3 text-[clamp(1.1rem,2.2vw,1.3rem)] text-foreground"
-              />
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
+                <input
+                  type="date"
+                  autoFocus
+                  value={customDate}
+                  onChange={(e) => pickCustomDate(e.target.value)}
+                  className="rounded-2xl border-[3px] border-frame bg-surface px-4 py-3 text-[clamp(1.1rem,2.2vw,1.3rem)] text-foreground"
+                />
+                <button
+                  onClick={dateAskVoice}
+                  className="flex items-center gap-2 rounded-2xl bg-accent-voice px-4 py-3 text-[clamp(1rem,2vw,1.15rem)] font-extrabold text-white"
+                >
+                  <IconMic className="h-[24px] w-[24px]" />
+                  말하기
+                </button>
+              </div>
+              <VoiceBanner active={dateVoiceStatus.length > 0} status={dateVoiceStatus} onReplay={dateAskVoice} />
             </div>
           ) : null}
           <p className="min-h-[1.4em] text-center text-[clamp(1rem,2.2vw,1.2rem)] font-bold text-accent-success">
@@ -741,6 +879,62 @@ export default function Home() {
               >
                 추가
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {openItemId && openItem && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/45 p-5">
+          <div className="flex w-full max-w-lg flex-col gap-5 rounded-[28px] border-[5px] border-frame bg-surface p-7">
+            <h2 className="text-[clamp(1.3rem,2.8vw,1.6rem)] font-extrabold">{openItem.label} 담기</h2>
+            <div className="flex flex-wrap gap-2.5">
+              {(ITEM_VARIANTS[openItemId] ?? []).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setDraftVariant(v)}
+                  className={`${variantChip} ${draftVariant === v ? variantChipSelected : ""}`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-center gap-5">
+              <button onClick={() => setDraftQty((q) => Math.max(1, q - 1))} className={stepperBtn}>
+                −
+              </button>
+              <span className="min-w-[4ch] text-center text-[clamp(1.3rem,3vw,1.6rem)] font-extrabold">
+                {draftQty}개
+              </span>
+              <button onClick={() => setDraftQty((q) => Math.min(20, q + 1))} className={stepperBtn}>
+                +
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-2.5">
+              {itemConfigs[openItemId] ? (
+                <button
+                  onClick={removeItemPopup}
+                  className="rounded-2xl border-[3px] border-frame px-5 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-bold"
+                >
+                  빼기
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2.5">
+                <button
+                  onClick={() => setOpenItemId(null)}
+                  className="rounded-2xl border-[3px] border-frame px-5 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-bold"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={saveItemPopup}
+                  className="rounded-2xl bg-accent-success px-5.5 py-2.5 text-[clamp(1rem,2vw,1.1rem)] font-extrabold text-white"
+                >
+                  저장
+                </button>
+              </div>
             </div>
           </div>
         </div>
