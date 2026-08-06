@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f7ef;
+  --foreground: #1b241c;
+  --surface: #ffffff;
+  --text-soft: #4b5a4c;
+  --accent-button: #e8622c;
+  --accent-button-deep: #b84a1d;
+  --accent-voice: #2b4570;
+  --accent-voice-deep: #1c3053;
+  --accent-success: #3f7a4b;
+  --frame: #d9dcc9;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-text-soft: var(--text-soft);
+  --color-accent-button: var(--accent-button);
+  --color-accent-button-deep: var(--accent-button-deep);
+  --color-accent-voice: var(--accent-voice);
+  --color-accent-voice-deep: var(--accent-voice-deep);
+  --color-accent-success: var(--accent-success);
+  --color-frame: var(--frame);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #121a14;
+    --foreground: #f3efe2;
+    --surface: #1b2620;
+    --text-soft: #b9c2b2;
+    --accent-button: #ff7a3d;
+    --accent-button-deep: #d6591f;
+    --accent-voice: #6b8fc4;
+    --accent-voice-deep: #3f5c8a;
+    --accent-success: #6fcb86;
+    --frame: #33402f;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+}
+
+@keyframes wave {
+  0%, 100% { height: 8px; }
+  50% { height: 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-wave-bar { animation: none !important; height: 16px !important; }
+}
