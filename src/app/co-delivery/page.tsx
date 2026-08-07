@@ -252,7 +252,7 @@ export default function CoDeliveryDemo() {
 
       <div className="flex flex-col gap-2">
         <label htmlFor="hub-address" className="text-[clamp(.9rem,1.9vw,1rem)] font-bold text-text-soft">
-          허브 매장 주소 (마트·편의점) — 비워두면 무작위로 골라드려요
+          허브 매장 주소 (마트·편의점)
         </label>
         <input
           id="hub-address"
