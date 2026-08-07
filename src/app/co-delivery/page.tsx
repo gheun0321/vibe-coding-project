@@ -216,6 +216,7 @@ function KakaoRealMap({ result }: { result: RouteResult }) {
 }
 
 export default function CoDeliveryDemo() {
+  const [hubAddress, setHubAddress] = useState("");
   const [result, setResult] = useState<RouteResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -225,7 +226,8 @@ export default function CoDeliveryDemo() {
     setError("");
     setResult(null);
     try {
-      const res = await fetch("/api/route-demo");
+      const query = hubAddress.trim() ? `?hubAddress=${encodeURIComponent(hubAddress.trim())}` : "";
+      const res = await fetch(`/api/route-demo${query}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "요청에 실패했어요.");
       setResult(data);
@@ -243,9 +245,22 @@ export default function CoDeliveryDemo() {
       <div>
         <h1 className="text-[clamp(1.5rem,4vw,2rem)] font-extrabold">공동배송 경로 데모</h1>
         <p className="mt-2 text-[clamp(.95rem,2vw,1.05rem)] font-semibold text-text-soft">
-          진주 외곽 동네 중 하나를 무작위로 골라 허브로 삼고, 그 주변 500m 이내에 배달지 3~4곳을 무작위로 만든 뒤
-          실제 도로 기준으로 가장 짧은 방문 순서를 계산해요. (카카오모빌리티 길찾기 API 사용)
+          마트·편의점을 허브로 삼고, 그 주변 500m 이내 가정집 3~4곳을 무작위로 만든 뒤 실제 도로 기준으로 가장
+          짧은(단거리) 배달 순서를 계산해요. (카카오모빌리티 길찾기 API 사용)
         </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="hub-address" className="text-[clamp(.9rem,1.9vw,1rem)] font-bold text-text-soft">
+          허브 매장 주소 (마트·편의점) — 비워두면 무작위로 골라드려요
+        </label>
+        <input
+          id="hub-address"
+          value={hubAddress}
+          onChange={(e) => setHubAddress(e.target.value)}
+          placeholder="예: 진주시 문산읍 OO로 12"
+          className="rounded-2xl border-2 border-frame bg-surface px-4 py-3 text-[clamp(1rem,2.1vw,1.1rem)] text-foreground"
+        />
       </div>
 
       <button
@@ -273,12 +288,12 @@ export default function CoDeliveryDemo() {
 
           <div className="flex flex-col gap-4 rounded-2xl border-2 border-frame bg-surface p-5">
             <div>
-              <span className="text-[clamp(.85rem,1.8vw,.95rem)] font-bold text-text-soft">허브 동네</span>
+              <span className="text-[clamp(.85rem,1.8vw,.95rem)] font-bold text-text-soft">허브 매장</span>
               <p className="text-[clamp(1.2rem,2.6vw,1.4rem)] font-extrabold">{result.hub.name}</p>
             </div>
 
             <div className="flex flex-col gap-2">
-              <span className="text-[clamp(.85rem,1.8vw,.95rem)] font-bold text-text-soft">최적 방문 순서</span>
+              <span className="text-[clamp(.85rem,1.8vw,.95rem)] font-bold text-text-soft">최적 배달 순서 (가정집)</span>
               <ol className="flex flex-col gap-2">
                 {result.optimalOrder.map((id, i) => {
                   const stop = stopsById.get(id);
@@ -293,7 +308,7 @@ export default function CoDeliveryDemo() {
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent-success text-sm text-white">
                           {i + 1}
                         </span>
-                        배달지 {id}
+                        가정집 {id}
                       </span>
                       <span className="text-sm font-semibold text-text-soft">허브 직선거리 약 {straight}m</span>
                     </li>
