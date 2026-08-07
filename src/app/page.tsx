@@ -25,7 +25,7 @@ import {
 import { HangulKeypad } from "./hangul-keypad";
 import { BigCalendar } from "./big-calendar";
 
-type ScreenId = "home" | "items" | "delivery" | "address" | "payment" | "confirm";
+type ScreenId = "main" | "home" | "items" | "delivery" | "address" | "payment" | "confirm";
 type Mode = "button" | "voice" | null;
 type PaymentMethod = "meet" | "card" | null;
 type DateChoice = "today" | "tomorrow" | "custom";
@@ -65,7 +65,7 @@ const ITEM_VARIANTS: Record<string, string[]> = Object.fromEntries(
   Object.entries(ITEM_PRICES).map(([id, prices]) => [id, Object.keys(prices)])
 );
 
-const STEP_ORDER: ScreenId[] = ["home", "items", "delivery", "address", "payment", "confirm"];
+const STEP_ORDER: ScreenId[] = ["main", "home", "items", "delivery", "address", "payment", "confirm"];
 const STEP_LABEL: Partial<Record<ScreenId, string>> = {
   items: "1/5 · 물품 선택",
   delivery: "2/5 · 배송일 선택",
@@ -74,6 +74,8 @@ const STEP_LABEL: Partial<Record<ScreenId, string>> = {
   confirm: "5/5 · 주문 완료",
 };
 
+const MAIN_GREETING =
+  "안녕하세요, 장터온이에요. 필요한 물건을 눌러 바로 담거나, 새로 주문하기를 눌러주세요.";
 const HOME_GREETING =
   "안녕하세요. 오늘은 무엇을 주문해 볼까요? 그림을 눌러 방법을 골라주세요. 화면 보고 고르기. 소리 듣고 고르기.";
 
@@ -274,7 +276,7 @@ function VoiceBanner({
 }
 
 export default function Home() {
-  const [screen, setScreen] = useState<ScreenId>("home");
+  const [screen, setScreen] = useState<ScreenId>("main");
   const [mode, setMode] = useState<Mode>(null);
   const [itemLines, setItemLines] = useState<Record<string, LineItem[]>>({});
   const [custom, setCustom] = useState<string[]>([]);
@@ -323,7 +325,7 @@ export default function Home() {
     return () => activeCancelRef.current();
   }, [screen]);
 
-  const voiceActive = readAloud && screen !== "home";
+  const voiceActive = readAloud && screen !== "home" && screen !== "main";
 
   function deliveryNoticePhrase(): string {
     if (!delivery) return "";
@@ -333,8 +335,9 @@ export default function Home() {
 
   // 첫 화면: 매번 화면에 들어올 때 인사 + 화면 내용을 읽어줘요 (안내문구는 제외).
   useEffect(() => {
-    if (screen !== "home" || !readAloud) return;
-    speak(HOME_GREETING);
+    if (!readAloud) return;
+    if (screen === "main") speak(MAIN_GREETING);
+    else if (screen === "home") speak(HOME_GREETING);
   }, [screen, readAloud]);
 
   useEffect(() => {
@@ -561,11 +564,24 @@ export default function Home() {
     setScreen("items");
   }
 
+  function goToCategory(id: string) {
+    setMode("button");
+    setScreen("items");
+    openItemPopup(id);
+  }
+
   function goBack() {
     window.speechSynthesis?.cancel();
-    const idx = STEP_ORDER.indexOf(screen);
-    const target = STEP_ORDER[Math.max(0, idx - 1)];
-    if (target === "home") setReadAloud(true);
+    // "처음으로" 라벨이 붙는 물품선택 화면은 한 단계 전(home)이 아니라 진짜 첫 화면(main)으로 보내요.
+    // (main 화면에서 카테고리를 바로 눌러 들어온 경우 home을 거치지 않았기 때문이에요)
+    let target: ScreenId;
+    if (screen === "items") {
+      target = "main";
+    } else {
+      const idx = STEP_ORDER.indexOf(screen);
+      target = STEP_ORDER[Math.max(0, idx - 1)];
+    }
+    if (target === "home" || target === "main") setReadAloud(true);
     setScreen(target);
   }
 
@@ -669,7 +685,7 @@ export default function Home() {
 
   function restart() {
     window.speechSynthesis?.cancel();
-    setScreen("home");
+    setScreen("main");
     setReadAloud(true);
     setMode(null);
     setItemLines({});
@@ -701,9 +717,9 @@ export default function Home() {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-5 p-4 sm:p-8">
       <div className="flex shrink-0 justify-center">
-        {screen === "home" ? (
+        {screen === "main" || screen === "home" ? (
           <button
-            onClick={() => speak(HOME_GREETING)}
+            onClick={() => speak(screen === "main" ? MAIN_GREETING : HOME_GREETING)}
             className="flex items-center gap-2.5 rounded-2xl bg-accent-voice px-5 py-2.5 text-[clamp(1rem,2.1vw,1.2rem)] font-extrabold text-white outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2"
           >
             <IconMic className="h-6 w-6" />
@@ -723,6 +739,49 @@ export default function Home() {
           </button>
         )}
       </div>
+      {screen === "main" && (
+        <section className="flex flex-1 flex-col gap-6">
+          <p className="text-center text-[clamp(1.5rem,4vw,2.4rem)] font-extrabold leading-snug text-balance">
+            장터온
+            <span className="mt-2 block text-[clamp(1rem,2.2vw,1.25rem)] font-semibold text-text-soft">
+              필요한 물건을 눌러 바로 담아보세요
+            </span>
+          </p>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3.5">
+            {PRESET_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => goToCategory(item.id)}
+                className={`${cardBase} min-h-[120px]`}
+              >
+                <item.Icon className="h-[clamp(40px,6vw,56px)] w-[clamp(40px,6vw,56px)] text-text-soft" />
+                <span className="text-[clamp(1rem,2.1vw,1.2rem)] font-extrabold">{item.label}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setScreen("home")}
+            className="self-center rounded-[20px] bg-accent-button px-8 py-3.5 text-[clamp(1.1rem,2.4vw,1.4rem)] font-extrabold text-white outline-none focus-visible:outline-4 focus-visible:outline-foreground focus-visible:outline-offset-2"
+          >
+            새로 주문하기
+          </button>
+          <div className="grid gap-3.5 min-[560px]:grid-cols-2">
+            <div className="flex flex-col gap-1.5 rounded-2xl border-2 border-frame bg-surface p-4">
+              <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-extrabold">오늘 배송 예정</span>
+              <span className="text-[clamp(.9rem,1.9vw,1.05rem)] font-semibold text-text-soft">
+                아직 진행 중인 배송이 없어요
+              </span>
+            </div>
+            <div className="flex flex-col gap-1.5 rounded-2xl border-2 border-frame bg-surface p-4">
+              <span className="text-[clamp(1rem,2.1vw,1.15rem)] font-extrabold">자주 구매한 상품</span>
+              <span className="text-[clamp(.9rem,1.9vw,1.05rem)] font-semibold text-text-soft">
+                주문을 마치면 여기에 표시돼요
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
+
       {screen === "home" && (
         <section className="flex flex-1 flex-col gap-6">
           <p className="text-center text-[clamp(1.5rem,4vw,2.4rem)] font-extrabold leading-snug text-balance">
@@ -761,12 +820,12 @@ export default function Home() {
         </section>
       )}
 
-      {screen !== "home" && (
+      {screen !== "main" && (
         <div className="flex shrink-0 items-center justify-between gap-3">
           {screen !== "confirm" ? (
             <button onClick={goBack} className={backBtn}>
               <IconBack className="h-[26px] w-[26px]" />
-              {screen === "items" ? "처음으로" : "이전으로"}
+              {screen === "items" || screen === "home" ? "처음으로" : "이전으로"}
             </button>
           ) : (
             <span />
