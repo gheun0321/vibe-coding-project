@@ -1,18 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Stop = { id: number; lat: number; lng: number };
+type LatLng = { lat: number; lng: number };
 type RouteResult = {
   hub: { name: string; lat: number; lng: number };
   stops: Stop[];
   optimalOrder: number[];
   totalDistanceMeters: number;
   totalDurationSeconds: number;
+  path: LatLng[];
 };
 
+const KAKAO_JS_KEY = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
+
+type KakaoLatLng = unknown;
+type KakaoOverlayLike = { setMap: (m: unknown) => void };
+type KakaoMapsNS = {
+  load: (cb: () => void) => void;
+  LatLng: new (lat: number, lng: number) => KakaoLatLng;
+  LatLngBounds: new () => { extend: (p: KakaoLatLng) => void };
+  Map: new (el: HTMLElement, opts: { center: KakaoLatLng; level: number }) => { setBounds: (b: unknown) => void };
+  CustomOverlay: new (opts: { position: KakaoLatLng; content: string; yAnchor?: number }) => KakaoOverlayLike;
+  Polyline: new (opts: {
+    path: KakaoLatLng[];
+    strokeWeight: number;
+    strokeColor: string;
+    strokeOpacity: number;
+    strokeStyle: string;
+  }) => KakaoOverlayLike;
+};
+
+declare global {
+  interface Window {
+    kakao?: { maps?: KakaoMapsNS };
+  }
+}
+
 // 허브에서 각 배달지까지의 직선거리(참고용 표시 — 실제 이동거리는 도로 기준으로 별도 계산돼요).
-function straightLineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+function straightLineMeters(a: LatLng, b: LatLng): number {
   const R = 6371000;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
@@ -22,8 +49,8 @@ function straightLineMeters(a: { lat: number; lng: number }, b: { lat: number; l
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// 위경도를 허브 기준 "동쪽으로 몇m, 북쪽으로 몇m" 평면 좌표로 바꿔요 (500m 안쪽 구간이라 이 정도 근사로 충분해요).
-function toLocalMeters(hub: { lat: number; lng: number }, p: { lat: number; lng: number }) {
+// 위경도를 허브 기준 평면 좌표(동쪽 몇m, 북쪽 몇m)로 바꿔요 — 도식(SVG) 표시용.
+function toLocalMeters(hub: LatLng, p: LatLng) {
   const east = (p.lng - hub.lng) * Math.cos((hub.lat * Math.PI) / 180) * 111320;
   const north = (p.lat - hub.lat) * 110540;
   return { east, north };
@@ -38,7 +65,8 @@ function toSvgPoint(east: number, north: number) {
   return { x: CENTER + east * PIXELS_PER_METER, y: CENTER - north * PIXELS_PER_METER };
 }
 
-function RouteMap({ result }: { result: RouteResult }) {
+// 실제 지도를 못 불러올 때(키 미설정 등) 대신 보여주는 도식 지도예요.
+function SchematicMap({ result }: { result: RouteResult }) {
   const stopsById = new Map(result.stops.map((s) => [s.id, s]));
   const orderedPoints = [
     { x: CENTER, y: CENTER },
@@ -57,7 +85,6 @@ function RouteMap({ result }: { result: RouteResult }) {
       role="img"
       aria-label="허브와 배달지 위치, 방문 순서를 보여주는 도식 지도"
     >
-      {/* 500m 반경 참고선 */}
       <circle
         cx={CENTER}
         cy={CENTER}
@@ -67,14 +94,15 @@ function RouteMap({ result }: { result: RouteResult }) {
         strokeWidth={2}
         strokeDasharray="6 6"
       />
-      <text x={CENTER} y={CENTER - RADIUS_METERS * PIXELS_PER_METER - 8} textAnchor="middle" className="fill-text-soft text-[11px] font-bold">
+      <text
+        x={CENTER}
+        y={CENTER - RADIUS_METERS * PIXELS_PER_METER - 8}
+        textAnchor="middle"
+        className="fill-text-soft text-[11px] font-bold"
+      >
         500m 반경
       </text>
-
-      {/* 방문 순서 경로선 */}
       <path d={pathD} fill="none" stroke="var(--accent-success)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-
-      {/* 배달지 마커 (방문 순서 번호) */}
       {result.optimalOrder.map((id, i) => {
         const s = stopsById.get(id);
         if (!s) return null;
@@ -89,14 +117,102 @@ function RouteMap({ result }: { result: RouteResult }) {
           </g>
         );
       })}
-
-      {/* 허브 마커 */}
       <circle cx={CENTER} cy={CENTER} r={19} fill="var(--accent-button)" stroke="var(--surface)" strokeWidth={3} />
       <text x={CENTER} y={CENTER + 5} textAnchor="middle" className="fill-white text-[12px] font-extrabold">
         허브
       </text>
     </svg>
   );
+}
+
+function loadKakaoMapsSdk(): Promise<KakaoMapsNS> {
+  return new Promise((resolve, reject) => {
+    if (!KAKAO_JS_KEY) {
+      reject(new Error("카카오 JavaScript 키가 설정되지 않았어요."));
+      return;
+    }
+    if (window.kakao?.maps) {
+      window.kakao.maps.load(() => resolve(window.kakao!.maps!));
+      return;
+    }
+    const existing = document.getElementById("kakao-maps-sdk") as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => window.kakao!.maps!.load(() => resolve(window.kakao!.maps!)));
+      existing.addEventListener("error", () => reject(new Error("카카오맵 스크립트를 불러오지 못했어요.")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "kakao-maps-sdk";
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`;
+    script.onload = () => window.kakao!.maps!.load(() => resolve(window.kakao!.maps!));
+    script.onerror = () => reject(new Error("카카오맵 스크립트를 불러오지 못했어요. 도메인 등록을 확인해주세요."));
+    document.head.appendChild(script);
+  });
+}
+
+function markerHtml(bg: string, label: string, size: number) {
+  return `<div style="background:${bg};color:#fff;border:3px solid var(--surface);border-radius:9999px;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${size >= 40 ? 13 : 14}px;box-shadow:0 2px 6px rgba(0,0,0,.3)">${label}</div>`;
+}
+
+function KakaoRealMap({ result }: { result: RouteResult }) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [mapError, setMapError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    loadKakaoMapsSdk()
+      .then((kakao) => {
+        if (cancelled || !mapRef.current) return;
+        const center = new kakao.LatLng(result.hub.lat, result.hub.lng);
+        const map = new kakao.Map(mapRef.current, { center, level: 4 });
+        const bounds = new kakao.LatLngBounds();
+        bounds.extend(center);
+
+        new kakao.CustomOverlay({ position: center, content: markerHtml("var(--accent-button)", "허브", 40) }).setMap(map);
+
+        const stopsById = new Map(result.stops.map((s) => [s.id, s]));
+        result.optimalOrder.forEach((id, i) => {
+          const s = stopsById.get(id);
+          if (!s) return;
+          const pos = new kakao.LatLng(s.lat, s.lng);
+          bounds.extend(pos);
+          new kakao.CustomOverlay({ position: pos, content: markerHtml("var(--accent-success)", String(i + 1), 32) }).setMap(
+            map
+          );
+        });
+
+        if (result.path.length > 1) {
+          const path = result.path.map((p) => new kakao.LatLng(p.lat, p.lng));
+          path.forEach((p) => bounds.extend(p));
+          new kakao.Polyline({
+            path,
+            strokeWeight: 5,
+            strokeColor: "#3F7A4B",
+            strokeOpacity: 0.9,
+            strokeStyle: "solid",
+          }).setMap(map);
+        }
+
+        map.setBounds(bounds);
+      })
+      .catch((e) => setMapError(e instanceof Error ? e.message : "지도를 불러오지 못했어요."));
+    return () => {
+      cancelled = true;
+    };
+  }, [result]);
+
+  if (mapError) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="rounded-2xl border-2 border-accent-button bg-surface p-4 text-sm font-semibold text-accent-button-deep">
+          실제 지도를 불러오지 못했어요 ({mapError}) — 대신 도식으로 보여드려요.
+        </div>
+        <SchematicMap result={result} />
+      </div>
+    );
+  }
+
+  return <div ref={mapRef} className="h-[360px] w-full rounded-2xl border-2 border-frame" />;
 }
 
 export default function CoDeliveryDemo() {
@@ -149,9 +265,9 @@ export default function CoDeliveryDemo() {
       {result && (
         <div className="flex flex-col gap-5">
           <div>
-            <RouteMap result={result} />
+            {KAKAO_JS_KEY ? <KakaoRealMap result={result} /> : <SchematicMap result={result} />}
             <p className="mt-2 text-center text-[clamp(.8rem,1.7vw,.9rem)] font-semibold text-text-soft">
-              도식이에요 (실제 도로 굴곡은 반영 안 됨) · 주황 = 허브, 초록 숫자 = 방문 순서
+              주황 = 허브, 초록 숫자 = 방문 순서{KAKAO_JS_KEY ? " · 초록 선 = 실제 도로 경로" : " (도식 — 실제 도로 굴곡은 반영 안 됨)"}
             </p>
           </div>
 

@@ -58,10 +58,9 @@ async function geocodeTown(name: string, apiKey: string): Promise<LatLng> {
   return { lat: Number(first.y), lng: Number(first.x) };
 }
 
-async function fetchRouteDistance(
-  points: LatLng[],
-  apiKey: string
-): Promise<{ distanceMeters: number; durationSeconds: number }> {
+type RouteInfo = { distanceMeters: number; durationSeconds: number; path: LatLng[] };
+
+async function fetchRouteDistance(points: LatLng[], apiKey: string): Promise<RouteInfo> {
   const [origin, ...rest] = points;
   const destination = rest[rest.length - 1];
   const waypoints = rest.slice(0, -1);
@@ -83,7 +82,19 @@ async function fetchRouteDistance(
   if (!route || route.result_code !== 0) {
     throw new Error("경로를 찾지 못했어요 (도로에서 너무 먼 지점일 수 있어요)");
   }
-  return { distanceMeters: route.summary.distance, durationSeconds: route.summary.duration };
+
+  // 실제 도로 모양(굴곡)을 지도에 그릴 수 있도록, 구간별 좌표(vertexes)를 하나의 경로로 모아요.
+  const path: LatLng[] = [];
+  for (const section of route.sections ?? []) {
+    for (const road of section.roads ?? []) {
+      const vertexes: number[] = road.vertexes ?? [];
+      for (let i = 0; i < vertexes.length; i += 2) {
+        path.push({ lng: vertexes[i], lat: vertexes[i + 1] });
+      }
+    }
+  }
+
+  return { distanceMeters: route.summary.distance, durationSeconds: route.summary.duration, path };
 }
 
 function permutations<T>(arr: T[]): T[][] {
@@ -122,13 +133,13 @@ export async function GET() {
     // 배달지를 방문하는 모든 순서를 실제로 계산해보고, 도로 기준 총 이동거리가 가장 짧은 순서를 골라요.
     // (배달지가 3~4곳뿐이라 모든 경우의 수를 다 계산해도 충분히 빨라요)
     const orders = permutations(stops);
-    let best: { order: Stop[]; distanceMeters: number; durationSeconds: number } | null = null;
+    let best: { order: Stop[] } & RouteInfo | null = null;
 
     for (const order of orders) {
       const routePoints: LatLng[] = [hub, ...order.map((s) => ({ lat: s.lat, lng: s.lng }))];
       const result = await fetchRouteDistance(routePoints, apiKey);
       if (!best || result.distanceMeters < best.distanceMeters) {
-        best = { order, distanceMeters: result.distanceMeters, durationSeconds: result.durationSeconds };
+        best = { order, ...result };
       }
     }
 
@@ -140,6 +151,7 @@ export async function GET() {
       optimalOrder: best.order.map((s) => s.id),
       totalDistanceMeters: best.distanceMeters,
       totalDurationSeconds: best.durationSeconds,
+      path: best.path,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "알 수 없는 오류가 발생했어요.";
